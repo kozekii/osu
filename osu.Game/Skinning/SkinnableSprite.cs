@@ -32,8 +32,18 @@ namespace osu.Game.Skinning
         [SettingSource(typeof(SkinnableComponentStrings), nameof(SkinnableComponentStrings.SpriteName), SettingControlType = typeof(SpriteSelectorControl))]
         public Bindable<string> SpriteName { get; } = new Bindable<string>(string.Empty);
 
+        [SettingSource("Opacity", "Transparency level for the sprite.", SettingControlType = typeof(SettingsPercentageSlider<float>))]
+        public BindableNumber<float> SpriteOpacity { get; } = new BindableFloat(1.0f)
+        {
+            MinValue = 0.05f,
+            MaxValue = 1.0f,
+            Precision = 0.05f,
+        };
+
         [Resolved]
         private ISkinSource source { get; set; } = null!;
+
+        private readonly bool isUserPlaced;
 
         public SkinnableSprite(string textureName, Vector2? maxSize = null, ConfineMode confineMode = ConfineMode.NoScaling)
             : base(new SpriteComponentLookup(textureName, maxSize), confineMode)
@@ -44,6 +54,7 @@ namespace osu.Game.Skinning
         public SkinnableSprite()
             : base(new SpriteComponentLookup(string.Empty), ConfineMode.NoScaling)
         {
+            isUserPlaced = true;
             RelativeSizeAxes = Axes.None;
             AutoSizeAxes = Axes.Both;
 
@@ -53,6 +64,14 @@ namespace osu.Game.Skinning
                 if (IsLoaded)
                     SkinChanged(CurrentSkin);
             });
+        }
+
+        protected override void LoadComplete()
+        {
+            base.LoadComplete();
+
+            if (isUserPlaced)
+                SpriteOpacity.BindValueChanged(o => Alpha = o.NewValue, true);
         }
 
         protected override Drawable CreateDefault(ISkinComponentLookup lookup)
@@ -89,9 +108,6 @@ namespace osu.Game.Skinning
             {
                 base.LoadComplete();
 
-                // Round-about way of getting the user's skin to find available resources.
-                // In the future we'll probably want to allow access to resources from the fallbacks, or potentially other skins
-                // but that requires further thought.
                 var highestPrioritySkin = getHighestPriorityUserSkin(((SkinnableSprite)SettingSourceObject).source.AllSources) as Skin;
 
                 string[]? availableFiles = highestPrioritySkin?.SkinInfo.PerformRead(
@@ -116,7 +132,6 @@ namespace osu.Game.Skinning
                     return null;
                 }
 
-                // Temporarily used to exclude undesirable ISkin implementations
                 static bool isUserSkin(ISkin skin)
                     => skin.GetType() == typeof(TrianglesSkin)
                        || skin.GetType() == typeof(ArgonProSkin)

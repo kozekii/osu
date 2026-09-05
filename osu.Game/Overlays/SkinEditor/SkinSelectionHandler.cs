@@ -183,6 +183,22 @@ namespace osu.Game.Overlays.SkinEditor
 
             yield return new OsuMenuItem(SkinEditorStrings.SendToBack, MenuItemType.Standard, () => skinEditor.SendSelectionToBack());
 
+            var otherTargets = skinEditor.AvailableTargets
+                .Select(t => t.Lookup)
+                .Distinct()
+                .Where(lookup => !lookup.Equals(skinEditor.SelectedTarget.Value))
+                .ToArray();
+
+            if (otherTargets.Length > 0)
+            {
+                yield return new OsuMenuItemSpacer();
+
+                yield return new OsuMenuItem("Change Layer")
+                {
+                    Items = otherTargets.Select(t => new OsuMenuItem(t.ToString(), MenuItemType.Standard, () => skinEditor.MoveSelectionToTarget(t))).ToArray()
+                };
+            }
+
             yield return new OsuMenuItemSpacer();
 
             foreach (var item in base.GetContextMenuItemsForSelection(selection))

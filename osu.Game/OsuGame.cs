@@ -232,6 +232,8 @@ namespace osu.Game
         private Bindable<UserActivity> configUserActivity;
 
         private Bindable<string> configSkin;
+        private Bindable<string> configHitsoundSkin;
+        private Bindable<string> configCursorSkin;
 
         private RealmDetachedBeatmapStore detachedBeatmapStore;
 
@@ -440,12 +442,30 @@ namespace osu.Game
             configUserActivity = SessionStatics.GetBindable<UserActivity>(Static.UserOnlineActivity);
 
             configSkin = LocalConfig.GetBindable<string>(OsuSetting.Skin);
+            configHitsoundSkin = LocalConfig.GetBindable<string>(OsuSetting.HitsoundSkin);
+            configCursorSkin = LocalConfig.GetBindable<string>(OsuSetting.CursorSkin);
 
             // Transfer skin from config to realm instance once on startup.
             SkinManager.SetSkinFromConfiguration(configSkin.Value);
+            SkinManager.SetHitsoundSkinFromConfiguration(configHitsoundSkin.Value);
+            SkinManager.SetCursorSkinFromConfiguration(configCursorSkin.Value);
 
             // Transfer any runtime changes back to configuration file.
             SkinManager.CurrentSkinInfo.ValueChanged += skin => configSkin.Value = skin.NewValue.ID.ToString();
+            SkinManager.CurrentHitsoundSkinInfo.ValueChanged += skin =>
+            {
+                if (skin.NewValue == null || skin.NewValue.ID == SkinInfo.USE_CURRENT_SKIN)
+                    configHitsoundSkin.Value = string.Empty;
+                else
+                    configHitsoundSkin.Value = skin.NewValue.ID.ToString();
+            };
+            SkinManager.CurrentCursorSkinInfo.ValueChanged += skin =>
+            {
+                if (skin.NewValue == null || skin.NewValue.ID == SkinInfo.USE_CURRENT_SKIN)
+                    configCursorSkin.Value = string.Empty;
+                else
+                    configCursorSkin.Value = skin.NewValue.ID.ToString();
+            };
 
             UserPlayingState.BindValueChanged(p =>
             {

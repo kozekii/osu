@@ -171,6 +171,8 @@ namespace osu.Game.Screens.Play
 
         public DimmableStoryboard DimmableStoryboard { get; private set; }
 
+        public GameplayUnderlayContainer GameplayUnderlay { get; private set; }
+
         /// <summary>
         /// Whether failing should be allowed.
         /// By default, this checks whether all selected mods allow failing.
@@ -268,6 +270,7 @@ namespace osu.Game.Screens.Play
             HealthProcessor.ApplyBeatmap(playableBeatmap);
 
             dependencies.CacheAs(HealthProcessor);
+            dependencies.CacheAs(GameplayUnderlay = new GameplayUnderlayContainer { RelativeSizeAxes = Axes.Both });
 
             InternalChildren = new Drawable[]
             {
@@ -282,9 +285,9 @@ namespace osu.Game.Screens.Play
             Score.ScoreInfo.BeatmapInfo = Beatmap.Value.BeatmapInfo;
             Score.ScoreInfo.BeatmapHash = Beatmap.Value.BeatmapInfo.Hash;
             Score.ScoreInfo.Ruleset = ruleset.RulesetInfo;
-            Score.ScoreInfo.Mods = gameplayMods;
+            Score.ScoreInfo.Mods = gameplayMods.Append(new ModDevClient()).ToArray();
 
-            dependencies.CacheAs(GameplayState = new GameplayState(playableBeatmap, ruleset, gameplayMods, Score, ScoreProcessor, HealthProcessor, Beatmap.Value.Storyboard, PlayingState));
+            dependencies.CacheAs(GameplayState = new GameplayState(playableBeatmap, ruleset, Score.ScoreInfo.Mods, Score, ScoreProcessor, HealthProcessor, Beatmap.Value.Storyboard, PlayingState));
 
             var rulesetSkinProvider = new RulesetSkinProvidingContainer(ruleset, playableBeatmap, Beatmap.Value.Skin);
             config.BindWith(OsuSetting.BeatmapSkins, rulesetSkinProvider.BeatmapSkins);
@@ -446,6 +449,7 @@ namespace osu.Game.Screens.Play
                     {
                         RelativeSizeAxes = Axes.Both
                     },
+                    GameplayUnderlay,
                     letterboxOverlay = new LetterboxOverlay
                     {
                         BreakTracker = breakTracker,
@@ -475,30 +479,34 @@ namespace osu.Game.Screens.Play
 
         private Drawable createOverlayComponents()
         {
+            HUDOverlay = new HUDOverlay(DrawableRuleset, GameplayState.Mods, Configuration)
+            {
+                HoldToQuit =
+                {
+                    Action = () => PerformExitWithConfirmation(),
+                    IsPaused = { BindTarget = GameplayClockContainer.IsPaused },
+                    ReplayLoaded = { BindTarget = DrawableRuleset.HasReplayLoaded },
+                },
+                InputCountController =
+                {
+                    IsCounting =
+                    {
+                        Value = false
+                    },
+                },
+                Anchor = Anchor.Centre,
+                Origin = Anchor.Centre
+            };
+
+            GameplayUnderlay.Add(HUDOverlay.PlayfieldSkinLayer);
+
             var container = new Container
             {
                 RelativeSizeAxes = Axes.Both,
                 Children = new[]
                 {
                     DimmableStoryboard.OverlayLayerContainer.CreateProxy(),
-                    HUDOverlay = new HUDOverlay(DrawableRuleset, GameplayState.Mods, Configuration)
-                    {
-                        HoldToQuit =
-                        {
-                            Action = () => PerformExitWithConfirmation(),
-                            IsPaused = { BindTarget = GameplayClockContainer.IsPaused },
-                            ReplayLoaded = { BindTarget = DrawableRuleset.HasReplayLoaded },
-                        },
-                        InputCountController =
-                        {
-                            IsCounting =
-                            {
-                                Value = false
-                            },
-                        },
-                        Anchor = Anchor.Centre,
-                        Origin = Anchor.Centre
-                    },
+                    HUDOverlay,
                     BreakOverlay = new BreakOverlay(ScoreProcessor)
                     {
                         Clock = DrawableRuleset.FrameStableClock,

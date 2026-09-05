@@ -36,6 +36,7 @@ using osu.Game.Skinning;
 using osu.Framework.Graphics.Cursor;
 using osu.Game.Input.Bindings;
 using osu.Game.Utils;
+using osuTK;
 
 namespace osu.Game.Overlays.SkinEditor
 {
@@ -76,6 +77,8 @@ namespace osu.Game.Overlays.SkinEditor
 
         [Cached]
         private readonly OverlayColourProvider colourProvider = new OverlayColourProvider(OverlayColourScheme.Blue);
+
+        public IBindable<GlobalSkinnableContainerLookup?> SelectedTarget => selectedTarget;
 
         private readonly Bindable<GlobalSkinnableContainerLookup?> selectedTarget = new Bindable<GlobalSkinnableContainerLookup?>();
 
@@ -543,6 +546,8 @@ namespace osu.Game.Overlays.SkinEditor
                 settingsSidebar.Add(new SkinSettingsToolbox(component));
         }
 
+        public IEnumerable<SkinnableContainer> AvailableTargets => availableTargets;
+
         private IEnumerable<SkinnableContainer> availableTargets => targetScreen.ChildrenOfType<SkinnableContainer>();
 
         private SkinnableContainer? getFirstTarget() => availableTargets.FirstOrDefault();
@@ -710,6 +715,52 @@ namespace osu.Game.Overlays.SkinEditor
             }
 
             changeHandler?.EndChange();
+        }
+
+        public void MoveSelectionToTarget(GlobalSkinnableContainerLookup targetLookup)
+        {
+            var currentContainer = getTarget(selectedTarget.Value);
+            var targetContainer = getTarget(targetLookup);
+
+            if (currentContainer == null || targetContainer == null || currentContainer == targetContainer)
+                return;
+
+            var itemsToMove = SelectedComponents.ToArray();
+            if (itemsToMove.Length == 0)
+                return;
+
+            var screenSpaceQuads = itemsToMove.Select(item => ((Drawable)item).ScreenSpaceDrawQuad).ToArray();
+
+            foreach (var item in itemsToMove)
+                currentContainer.Remove(item, false);
+
+            for (int i = 0; i < itemsToMove.Length; i++)
+            {
+                var item = itemsToMove[i];
+                var drawable = (Drawable)item;
+
+                try
+                {
+                    targetContainer.Add(item);
+
+                    Vector2 screenCenter = screenSpaceQuads[i].Centre;
+                    Vector2 targetCenterInLocal = targetContainer.ToLocalSpace(screenCenter);
+                    drawable.Position = targetCenterInLocal - targetContainer.DrawSize * 0.5f;
+                    SkinSelectionHandler.ApplyClosestAnchorOrigin(drawable);
+                }
+                catch
+                {
+                    // Fallback
+                }
+            }
+
+            selectedTarget.Value = targetLookup;
+
+            Schedule(() =>
+            {
+                SelectedComponents.Clear();
+                SelectedComponents.AddRange(itemsToMove);
+            });
         }
 
         #region Drag & drop import handling

@@ -87,6 +87,14 @@ namespace osu.Game.Skinning
             {
                 switch (source)
                 {
+                    case CursorOnlySkin cursorSkin:
+                        sources.Add(new CursorOnlySkin(GetRulesetTransformedSkin(cursorSkin.UnderlyingSkin)));
+                        break;
+
+                    case HitsoundOnlySkin hitsoundSkin:
+                        sources.Add(new HitsoundOnlySkin(GetRulesetTransformedSkin(hitsoundSkin.UnderlyingSkin)));
+                        break;
+
                     case Skin skin:
                         sources.Add(GetRulesetTransformedSkin(skin));
                         break;

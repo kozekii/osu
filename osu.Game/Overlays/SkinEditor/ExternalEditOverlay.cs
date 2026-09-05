@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
+using osu.Framework;
 using osu.Framework.Allocation;
 using osu.Framework.Extensions;
 using osu.Framework.Extensions.Color4Extensions;
@@ -181,7 +182,39 @@ namespace osu.Game.Overlays.SkinEditor
             if (editOperation == null)
                 return;
 
-            gameHost.OpenFileExternally(editOperation.MountedPath.TrimDirectorySeparator() + Path.DirectorySeparatorChar);
+            string path = editOperation.MountedPath.TrimDirectorySeparator() + Path.DirectorySeparatorChar;
+
+            try
+            {
+                if (RuntimeInfo.OS == RuntimeInfo.Platform.Linux)
+                {
+                    try
+                    {
+                        var psi = new ProcessStartInfo
+                        {
+                            FileName = "/bin/sh",
+                            Arguments = $"-c \"xdg-open '{path}' >/dev/null 2>&1 || dolphin '{path}' >/dev/null 2>&1 || nautilus '{path}' >/dev/null 2>&1 || thunar '{path}' >/dev/null 2>&1 &\"",
+                            UseShellExecute = false,
+                            CreateNoWindow = true,
+                        };
+
+                        Process.Start(psi);
+                        return;
+                    }
+                    catch
+                    {
+                        // Fallback below
+                    }
+
+                    return;
+                }
+
+                gameHost.OpenFileExternally(path);
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"Failed to open directory '{path}' externally: {ex}", LoggingTarget.Runtime, LogLevel.Debug);
+            }
         }
 
         private void tryFinishOnExit()

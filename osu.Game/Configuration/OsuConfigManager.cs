@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
@@ -40,6 +40,8 @@ namespace osu.Game.Configuration
             // UI/selection defaults
             SetDefault(OsuSetting.Ruleset, string.Empty);
             SetDefault(OsuSetting.Skin, SkinInfo.ARGON_SKIN.ToString());
+            SetDefault(OsuSetting.HitsoundSkin, string.Empty);
+            SetDefault(OsuSetting.CursorSkin, string.Empty);
 
             SetDefault(OsuSetting.BeatmapDetailTab, BeatmapDetailTab.Local);
             SetDefault(OsuSetting.BeatmapLeaderboardSortMode, LeaderboardSortMode.Score);
@@ -398,6 +400,8 @@ namespace osu.Game.Configuration
         ShowFirstRunSetup,
         ShowConvertedBeatmaps,
         Skin,
+        HitsoundSkin,
+        CursorSkin,
         ScreenshotFormat,
         ScreenshotCaptureMenuCursor,
         BeatmapSkins,

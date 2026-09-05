@@ -68,6 +68,8 @@ namespace osu.Game.Rulesets.Osu.Skinning.Legacy
         protected override float IntervalMultiplier => 1 / Math.Max(cursorSize.Value, 1);
         protected override bool AvoidDrawingNearCursor => !DisjointTrail;
 
+        private Vector2? lastAddedPosition;
+
         protected override void Update()
         {
             base.Update();
@@ -77,8 +79,12 @@ namespace osu.Game.Rulesets.Osu.Skinning.Legacy
 
             if (Time.Current - lastTrailTime >= disjoint_trail_time_separation)
             {
-                lastTrailTime = Time.Current;
-                AddTrail(currentPosition.Value);
+                if (!lastAddedPosition.HasValue || Vector2.DistanceSquared(lastAddedPosition.Value, currentPosition.Value) > 1.0f)
+                {
+                    lastTrailTime = Time.Current;
+                    lastAddedPosition = currentPosition;
+                    AddTrail(currentPosition.Value);
+                }
             }
         }
 

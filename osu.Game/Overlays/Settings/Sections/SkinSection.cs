@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 #nullable disable
@@ -34,6 +34,8 @@ namespace osu.Game.Overlays.Settings.Sections
     public partial class SkinSection : SettingsSection
     {
         private SkinDropdown skinDropdown;
+        private SkinDropdown hitsoundSkinDropdown;
+        private SkinDropdown cursorSkinDropdown;
 
         public override LocalisableString Header => SkinSettingsStrings.SkinSectionHeader;
 
@@ -42,9 +44,11 @@ namespace osu.Game.Overlays.Settings.Sections
             Icon = OsuIcon.SkinB
         };
 
-        public override IEnumerable<LocalisableString> FilterTerms => base.FilterTerms.Concat(new LocalisableString[] { "skins" });
+        public override IEnumerable<LocalisableString> FilterTerms => base.FilterTerms.Concat(new LocalisableString[] { "skins", "hitsounds", "cursor", "cursors" });
 
         private readonly List<Live<SkinInfo>> dropdownItems = new List<Live<SkinInfo>>();
+        private readonly List<Live<SkinInfo>> hitsoundDropdownItems = new List<Live<SkinInfo>>();
+        private readonly List<Live<SkinInfo>> cursorDropdownItems = new List<Live<SkinInfo>>();
 
         [Resolved]
         private SkinManager skins { get; set; }
@@ -66,6 +70,27 @@ namespace osu.Game.Overlays.Settings.Sections
                     Caption = SkinSettingsStrings.CurrentSkin,
                     Current = skins.CurrentSkinInfo,
                 }),
+                new SettingsItemV2(hitsoundSkinDropdown = new SkinDropdown
+                {
+                    AlwaysShowSearchBar = true,
+                    AllowNonContiguousMatching = true,
+                    Caption = "Hitsound skin",
+                    Current = skins.CurrentHitsoundSkinInfo,
+                }),
+                new SettingsItemV2(cursorSkinDropdown = new SkinDropdown
+                {
+                    AlwaysShowSearchBar = true,
+                    AllowNonContiguousMatching = true,
+                    Caption = "Cursor skin",
+                    Current = skins.CurrentCursorSkinInfo,
+                }),
+                new Container
+                {
+                    RelativeSizeAxes = Axes.X,
+                    AutoSizeAxes = Axes.Y,
+                    Padding = SettingsPanel.CONTENT_PADDING,
+                    Child = new CursorPreview(),
+                },
                 new FillFlowContainer
                 {
                     RelativeSizeAxes = Axes.X,
@@ -119,7 +144,18 @@ namespace osu.Game.Overlays.Settings.Sections
             dropdownItems.Clear();
             dropdownItems.AddRange(skins.GetAllUsableSkins());
 
-            Schedule(() => skinDropdown.Items = dropdownItems);
+            hitsoundDropdownItems.Clear();
+            hitsoundDropdownItems.AddRange(skins.GetAllUsableHitsoundSkins());
+
+            cursorDropdownItems.Clear();
+            cursorDropdownItems.AddRange(skins.GetAllUsableCursorSkins());
+
+            Schedule(() =>
+            {
+                skinDropdown.Items = dropdownItems;
+                hitsoundSkinDropdown.Items = hitsoundDropdownItems;
+                cursorSkinDropdown.Items = cursorDropdownItems;
+            });
         }
 
         protected override void Dispose(bool isDisposing)

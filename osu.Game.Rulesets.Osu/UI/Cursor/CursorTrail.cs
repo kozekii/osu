@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 #nullable disable
@@ -196,9 +196,16 @@ namespace osu.Game.Rulesets.Osu.UI.Cursor
                     Vector2 pos1 = lastPosition.Value;
                     Vector2 diff = pos2 - pos1;
                     float distance = diff.Length;
-                    Vector2 direction = diff / distance;
 
-                    float interval = Texture.DisplayWidth * CursorScale.X / 2.5f * IntervalMultiplier;
+                    if (distance <= 0.001f || float.IsNaN(distance))
+                        continue;
+
+                    Vector2 direction = diff / distance;
+                    if (float.IsNaN(direction.X) || float.IsNaN(direction.Y))
+                        continue;
+
+                    float textureWidth = Texture?.DisplayWidth ?? 32;
+                    float interval = Math.Max(1.0f, textureWidth * CursorScale.X / 2.5f * IntervalMultiplier);
                     float stopAt = distance - (AvoidDrawingNearCursor ? interval : 0);
 
                     for (float d = interval; d < stopAt; d += interval)

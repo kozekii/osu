@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 #nullable disable
@@ -115,6 +115,10 @@ namespace osu.Game.Screens.Play
 
             RelativeSizeAxes = Axes.Both;
 
+            PlayfieldSkinLayer = drawableRuleset != null
+                ? new SkinnableContainer(new GlobalSkinnableContainerLookup(GlobalSkinnableContainers.Playfield, drawableRuleset.Ruleset.RulesetInfo)) { AlwaysPresent = true, }
+                : Empty();
+
             Children = new[]
             {
                 new Container
@@ -130,9 +134,6 @@ namespace osu.Game.Screens.Play
                 mainComponents = new HUDComponentsContainer { AlwaysPresent = true, },
                 drawableRuleset != null
                     ? (rulesetComponents = new HUDComponentsContainer(drawableRuleset.Ruleset.RulesetInfo) { AlwaysPresent = true, })
-                    : Empty(),
-                PlayfieldSkinLayer = drawableRuleset != null
-                    ? new SkinnableContainer(new GlobalSkinnableContainerLookup(GlobalSkinnableContainers.Playfield, drawableRuleset.Ruleset.RulesetInfo)) { AlwaysPresent = true, }
                     : Empty(),
                 TopRightElements = new FillFlowContainer
                 {

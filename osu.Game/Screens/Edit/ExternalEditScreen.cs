@@ -2,9 +2,11 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using osu.Framework;
 using osu.Framework.Allocation;
 using osu.Framework.Extensions;
 using osu.Framework.Graphics;
@@ -187,8 +189,40 @@ namespace osu.Game.Screens.Edit
             if (EditOperation == null)
                 return;
 
-            // Ensure the trailing separator is present in order to show the folder contents.
-            gameHost.OpenFileExternally(EditOperation.MountedPath.TrimDirectorySeparator() + Path.DirectorySeparatorChar);
+            string path = EditOperation.MountedPath.TrimDirectorySeparator() + Path.DirectorySeparatorChar;
+
+            try
+            {
+                if (RuntimeInfo.OS == RuntimeInfo.Platform.Linux)
+                {
+                    try
+                    {
+                        var psi = new ProcessStartInfo
+                        {
+                            FileName = "/bin/sh",
+                            Arguments = $"-c \"xdg-open '{path}' >/dev/null 2>&1 || dolphin '{path}' >/dev/null 2>&1 || nautilus '{path}' >/dev/null 2>&1 || thunar '{path}' >/dev/null 2>&1 &\"",
+                            UseShellExecute = false,
+                            CreateNoWindow = true,
+                        };
+
+                        Process.Start(psi);
+                        return;
+                    }
+                    catch
+                    {
+                        // Fallback below
+                    }
+
+                    return;
+                }
+
+                // Ensure the trailing separator is present in order to show the folder contents.
+                gameHost.OpenFileExternally(path);
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"Failed to open directory '{path}' externally: {ex}", LoggingTarget.Runtime, LogLevel.Debug);
+            }
         }
 
         private async Task finish()

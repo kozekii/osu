@@ -3,7 +3,9 @@
 
 #nullable disable
 
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
@@ -82,10 +84,11 @@ namespace osu.Game.Screens.Play
         {
             this.beatmap = beatmap;
             this.logoFacade = logoFacade;
-
             this.mods = new Bindable<IReadOnlyList<Mod>>();
             this.mods.BindTo(mods);
         }
+
+        private readonly Bindable<IReadOnlyList<Mod>> displayedMods = new Bindable<IReadOnlyList<Mod>>();
 
         private IBindable<StarDifficulty> starDifficulty;
 
@@ -95,6 +98,14 @@ namespace osu.Game.Screens.Play
         [BackgroundDependencyLoader]
         private void load(BeatmapDifficultyCache difficultyCache, OsuColour colours)
         {
+            mods.BindValueChanged(m =>
+            {
+                var list = (m.NewValue ?? Array.Empty<Mod>()).ToList();
+                if (!list.Any(mod => mod is ModDevClient))
+                    list.Add(new ModDevClient());
+                displayedMods.Value = list;
+            }, true);
+
             var metadata = beatmap.BeatmapInfo.Metadata;
 
             AutoSizeAxes = Axes.Both;
@@ -232,7 +243,7 @@ namespace osu.Game.Screens.Play
                             Anchor = Anchor.TopCentre,
                             Origin = Anchor.TopCentre,
                             Margin = new MarginPadding { Top = 20 },
-                            Current = mods
+                            Current = displayedMods
                         },
                     },
                 }

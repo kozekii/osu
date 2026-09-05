@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 using osu.Framework.Allocation;
@@ -84,6 +84,10 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
 
                 // extend the lifetime to cover lighting fade
                 LifetimeEnd = Lighting.LatestTransformEndTime;
+            }
+            else
+            {
+                Lighting.Hide();
             }
 
             base.ApplyHitAnimations();

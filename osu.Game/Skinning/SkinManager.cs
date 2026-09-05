@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 #nullable disable
@@ -54,6 +54,20 @@ namespace osu.Game.Skinning
         public readonly Bindable<Skin> CurrentSkin = new Bindable<Skin>();
 
         public readonly Bindable<Live<SkinInfo>> CurrentSkinInfo = new Bindable<Live<SkinInfo>>(ArgonSkin.CreateInfo().ToLiveUnmanaged());
+
+        private static readonly Live<SkinInfo> use_current_skin_info = new SkinInfo
+        {
+            ID = SkinInfo.USE_CURRENT_SKIN,
+            Name = "<Use active skin>",
+        }.ToLiveUnmanaged();
+
+        public readonly Bindable<Live<SkinInfo>> CurrentHitsoundSkinInfo = new Bindable<Live<SkinInfo>>(use_current_skin_info);
+
+        public readonly Bindable<Skin> CurrentHitsoundSkin = new Bindable<Skin>();
+
+        public readonly Bindable<Live<SkinInfo>> CurrentCursorSkinInfo = new Bindable<Live<SkinInfo>>(use_current_skin_info);
+
+        public readonly Bindable<Skin> CurrentCursorSkin = new Bindable<Skin>();
 
         private readonly SkinImporter skinImporter;
 
@@ -125,8 +139,28 @@ namespace osu.Game.Skinning
             CurrentSkin.Value = argonSkin;
             CurrentSkin.ValueChanged += skin =>
             {
-                if (!skin.NewValue.SkinInfo.Equals(CurrentSkinInfo.Value))
+                if (skin.NewValue.SkinInfo.ID != CurrentSkinInfo.Value.ID)
                     throw new InvalidOperationException($"Setting {nameof(CurrentSkin)}'s value directly is not supported. Use {nameof(CurrentSkinInfo)} instead.");
+
+                SourceChanged?.Invoke();
+            };
+
+            CurrentHitsoundSkinInfo.ValueChanged += skin =>
+            {
+                if (skin.NewValue == null || skin.NewValue.ID == SkinInfo.USE_CURRENT_SKIN)
+                    CurrentHitsoundSkin.Value = null;
+                else
+                    CurrentHitsoundSkin.Value = skin.NewValue.PerformRead(GetSkin);
+
+                SourceChanged?.Invoke();
+            };
+
+            CurrentCursorSkinInfo.ValueChanged += skin =>
+            {
+                if (skin.NewValue == null || skin.NewValue.ID == SkinInfo.USE_CURRENT_SKIN)
+                    CurrentCursorSkin.Value = null;
+                else
+                    CurrentCursorSkin.Value = skin.NewValue.PerformRead(GetSkin);
 
                 SourceChanged?.Invoke();
             };
@@ -155,6 +189,70 @@ namespace osu.Game.Skinning
                 skins.Add(realm.Find<SkinInfo>(SkinInfo.RETRO_SKIN).ToLive(Realm));
 
                 skins.Add(random_skin_info);
+
+                var userSkins = realm.All<SkinInfo>()
+                                     .Where(s => !s.DeletePending && !s.Protected)
+                                     .AsEnumerable()
+                                     .OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
+                                     .Select(s => s.ToLive(Realm));
+
+                foreach (var s in userSkins)
+                    skins.Add(s);
+            });
+
+            return skins;
+        }
+
+        /// <summary>
+        /// Returns the dropdown ordering for use by the hitsound skin selection UI.
+        /// Inserts '&lt;Use active skin&gt;' first, then defaults, then custom ones.
+        /// </summary>
+        public IList<Live<SkinInfo>> GetAllUsableHitsoundSkins()
+        {
+            var skins = new List<Live<SkinInfo>>
+            {
+                use_current_skin_info
+            };
+
+            Realm.Run(realm =>
+            {
+                skins.Add(realm.Find<SkinInfo>(SkinInfo.ARGON_SKIN).ToLive(Realm));
+                skins.Add(realm.Find<SkinInfo>(SkinInfo.ARGON_PRO_SKIN).ToLive(Realm));
+                skins.Add(realm.Find<SkinInfo>(SkinInfo.TRIANGLES_SKIN).ToLive(Realm));
+                skins.Add(realm.Find<SkinInfo>(SkinInfo.CLASSIC_SKIN).ToLive(Realm));
+                skins.Add(realm.Find<SkinInfo>(SkinInfo.RETRO_SKIN).ToLive(Realm));
+
+                var userSkins = realm.All<SkinInfo>()
+                                     .Where(s => !s.DeletePending && !s.Protected)
+                                     .AsEnumerable()
+                                     .OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
+                                     .Select(s => s.ToLive(Realm));
+
+                foreach (var s in userSkins)
+                    skins.Add(s);
+            });
+
+            return skins;
+        }
+
+        /// <summary>
+        /// Returns the dropdown ordering for use by the cursor skin selection UI.
+        /// Inserts '&lt;Use active skin&gt;' first, then defaults, then custom ones.
+        /// </summary>
+        public IList<Live<SkinInfo>> GetAllUsableCursorSkins()
+        {
+            var skins = new List<Live<SkinInfo>>
+            {
+                use_current_skin_info
+            };
+
+            Realm.Run(realm =>
+            {
+                skins.Add(realm.Find<SkinInfo>(SkinInfo.ARGON_SKIN).ToLive(Realm));
+                skins.Add(realm.Find<SkinInfo>(SkinInfo.ARGON_PRO_SKIN).ToLive(Realm));
+                skins.Add(realm.Find<SkinInfo>(SkinInfo.TRIANGLES_SKIN).ToLive(Realm));
+                skins.Add(realm.Find<SkinInfo>(SkinInfo.CLASSIC_SKIN).ToLive(Realm));
+                skins.Add(realm.Find<SkinInfo>(SkinInfo.RETRO_SKIN).ToLive(Realm));
 
                 var userSkins = realm.All<SkinInfo>()
                                      .Where(s => !s.DeletePending && !s.Protected)
@@ -330,6 +428,12 @@ namespace osu.Game.Skinning
         {
             get
             {
+                if (CurrentCursorSkin.Value != null)
+                    yield return new CursorOnlySkin(CurrentCursorSkin.Value);
+
+                if (CurrentHitsoundSkin.Value != null)
+                    yield return new HitsoundOnlySkin(CurrentHitsoundSkin.Value);
+
                 yield return CurrentSkin.Value;
 
                 // Skin manager provides default fallbacks.
@@ -451,6 +555,78 @@ namespace osu.Game.Skinning
             }
 
             CurrentSkinInfo.Value = skinInfo ?? trianglesSkin.SkinInfo;
+        }
+
+        public void SetHitsoundSkinFromConfiguration(string guidString)
+        {
+            if (string.IsNullOrEmpty(guidString))
+            {
+                CurrentHitsoundSkinInfo.Value = use_current_skin_info;
+                return;
+            }
+
+            Live<SkinInfo> skinInfo = null;
+
+            if (Guid.TryParse(guidString, out var guid))
+            {
+                if (guid == SkinInfo.USE_CURRENT_SKIN)
+                {
+                    CurrentHitsoundSkinInfo.Value = use_current_skin_info;
+                    return;
+                }
+
+                skinInfo = Query(s => s.ID == guid);
+
+                if (skinInfo == null)
+                {
+                    if (guid == SkinInfo.CLASSIC_SKIN)
+                        skinInfo = DefaultClassicSkin.SkinInfo;
+                    else if (guid == SkinInfo.RETRO_SKIN)
+                        skinInfo = retroSkin.SkinInfo;
+                    else if (guid == SkinInfo.TRIANGLES_SKIN)
+                        skinInfo = trianglesSkin.SkinInfo;
+                    else if (guid == SkinInfo.ARGON_SKIN)
+                        skinInfo = argonSkin.SkinInfo;
+                }
+            }
+
+            CurrentHitsoundSkinInfo.Value = skinInfo ?? use_current_skin_info;
+        }
+
+        public void SetCursorSkinFromConfiguration(string guidString)
+        {
+            if (string.IsNullOrEmpty(guidString))
+            {
+                CurrentCursorSkinInfo.Value = use_current_skin_info;
+                return;
+            }
+
+            Live<SkinInfo> skinInfo = null;
+
+            if (Guid.TryParse(guidString, out var guid))
+            {
+                if (guid == SkinInfo.USE_CURRENT_SKIN)
+                {
+                    CurrentCursorSkinInfo.Value = use_current_skin_info;
+                    return;
+                }
+
+                skinInfo = Query(s => s.ID == guid);
+
+                if (skinInfo == null)
+                {
+                    if (guid == SkinInfo.CLASSIC_SKIN)
+                        skinInfo = DefaultClassicSkin.SkinInfo;
+                    else if (guid == SkinInfo.RETRO_SKIN)
+                        skinInfo = retroSkin.SkinInfo;
+                    else if (guid == SkinInfo.TRIANGLES_SKIN)
+                        skinInfo = trianglesSkin.SkinInfo;
+                    else if (guid == SkinInfo.ARGON_SKIN)
+                        skinInfo = argonSkin.SkinInfo;
+                }
+            }
+
+            CurrentCursorSkinInfo.Value = skinInfo ?? use_current_skin_info;
         }
     }
 }
