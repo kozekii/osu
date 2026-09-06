@@ -33,6 +33,9 @@ namespace osu.Game.Overlays.Settings.Sections
 {
     public partial class SkinSection : SettingsSection
     {
+        private static readonly SkinPreset no_preset = new SkinPreset { Id = Guid.Empty, Name = @"<Select a preset...>" };
+
+        private PresetDropdown presetDropdown;
         private SkinDropdown skinDropdown;
         private SkinDropdown hitsoundSkinDropdown;
         private SkinDropdown cursorSkinDropdown;
@@ -44,7 +47,7 @@ namespace osu.Game.Overlays.Settings.Sections
             Icon = OsuIcon.SkinB
         };
 
-        public override IEnumerable<LocalisableString> FilterTerms => base.FilterTerms.Concat(new LocalisableString[] { "skins", "hitsounds", "cursor", "cursors" });
+        public override IEnumerable<LocalisableString> FilterTerms => base.FilterTerms.Concat(new LocalisableString[] { "skins", "hitsounds", "cursor", "cursors", "preset", "presets" });
 
         private readonly List<Live<SkinInfo>> dropdownItems = new List<Live<SkinInfo>>();
         private readonly List<Live<SkinInfo>> hitsoundDropdownItems = new List<Live<SkinInfo>>();
@@ -54,15 +57,37 @@ namespace osu.Game.Overlays.Settings.Sections
         private SkinManager skins { get; set; }
 
         [Resolved]
+        private SkinPresetManager presetManager { get; set; }
+
+        [Resolved]
         private RealmAccess realm { get; set; }
 
         private IDisposable realmSubscription;
+        private bool isApplyingPreset;
 
         [BackgroundDependencyLoader(permitNulls: true)]
         private void load([CanBeNull] SkinEditorOverlay skinEditor)
         {
             Children = new Drawable[]
             {
+                new SettingsItemV2(presetDropdown = new PresetDropdown
+                {
+                    AlwaysShowSearchBar = true,
+                    AllowNonContiguousMatching = true,
+                    Caption = "Skin preset",
+                }),
+                new FillFlowContainer
+                {
+                    RelativeSizeAxes = Axes.X,
+                    AutoSizeAxes = Axes.Y,
+                    Direction = FillDirection.Horizontal,
+                    Padding = SettingsPanel.CONTENT_PADDING,
+                    Children = new Drawable[]
+                    {
+                        new SavePresetButton { Padding = new MarginPadding { Right = 2.5f }, RelativeSizeAxes = Axes.X, Width = 0.5f },
+                        new DeletePresetButton { Padding = new MarginPadding { Left = 2.5f }, RelativeSizeAxes = Axes.X, Width = 0.5f },
+                    }
+                },
                 new SettingsItemV2(skinDropdown = new SkinDropdown
                 {
                     AlwaysShowSearchBar = true,
@@ -117,6 +142,29 @@ namespace osu.Game.Overlays.Settings.Sections
         {
             base.LoadComplete();
 
+            presetManager.Presets.BindCollectionChanged((_, _) => updatePresets(), true);
+
+            presetManager.CurrentPreset.BindValueChanged(preset =>
+            {
+                if (isApplyingPreset)
+                    return;
+
+                presetDropdown.Current.Value = preset.NewValue ?? no_preset;
+            }, true);
+
+            presetDropdown.Current.BindValueChanged(preset =>
+            {
+                if (isApplyingPreset)
+                    return;
+
+                if (preset.NewValue != null && preset.NewValue.Id != Guid.Empty)
+                {
+                    isApplyingPreset = true;
+                    presetManager.ApplyPreset(preset.NewValue);
+                    isApplyingPreset = false;
+                }
+            });
+
             realmSubscription = realm.RegisterForNotifications(_ => realm.Realm.All<SkinInfo>()
                                                                          .Where(s => !s.DeletePending)
                                                                          .OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase), skinsChanged);
@@ -131,6 +179,37 @@ namespace osu.Game.Overlays.Settings.Sections
                     skins.CurrentSkinInfo.Value = skin.OldValue;
                     skins.SelectRandomSkin();
                 }
+
+                onManualSkinConfigChange();
+            });
+
+            hitsoundSkinDropdown.Current.BindValueChanged(_ => onManualSkinConfigChange());
+            cursorSkinDropdown.Current.BindValueChanged(_ => onManualSkinConfigChange());
+        }
+
+        private void onManualSkinConfigChange()
+        {
+            if (isApplyingPreset)
+                return;
+
+            if (presetDropdown.Current.Value != no_preset)
+            {
+                isApplyingPreset = true;
+                presetManager.CurrentPreset.Value = null;
+                presetDropdown.Current.Value = no_preset;
+                isApplyingPreset = false;
+            }
+        }
+
+        private void updatePresets()
+        {
+            var list = new List<SkinPreset> { no_preset };
+            list.AddRange(presetManager.Presets);
+
+            Schedule(() =>
+            {
+                presetDropdown.Items = list;
+                presetDropdown.Current.Value = presetManager.CurrentPreset.Value ?? no_preset;
             });
         }
 
@@ -165,9 +244,135 @@ namespace osu.Game.Overlays.Settings.Sections
             realmSubscription?.Dispose();
         }
 
+        private partial class PresetDropdown : FormDropdown<SkinPreset>
+        {
+            protected override LocalisableString GenerateItemText(SkinPreset item) => item?.Name ?? string.Empty;
+        }
+
         private partial class SkinDropdown : FormDropdown<Live<SkinInfo>>
         {
             protected override LocalisableString GenerateItemText(Live<SkinInfo> item) => item.ToString();
+        }
+
+        public partial class SavePresetButton : SettingsButtonV2, IHasPopover
+        {
+            [BackgroundDependencyLoader]
+            private void load()
+            {
+                Text = "Save preset";
+                Action = this.ShowPopover;
+            }
+
+            public Popover GetPopover() => new SavePresetPopover();
+        }
+
+        public partial class SavePresetPopover : OsuPopover
+        {
+            [Resolved]
+            private SkinPresetManager presetManager { get; set; }
+
+            [Resolved]
+            private SkinManager skins { get; set; }
+
+            private readonly FocusedTextBox textBox;
+
+            public SavePresetPopover()
+            {
+                AutoSizeAxes = Axes.Both;
+                Origin = Anchor.TopCentre;
+
+                RoundedButton saveButton;
+
+                Child = new FillFlowContainer
+                {
+                    Direction = FillDirection.Vertical,
+                    AutoSizeAxes = Axes.Y,
+                    Width = 250,
+                    Spacing = new Vector2(10f),
+                    Children = new Drawable[]
+                    {
+                        textBox = new FocusedTextBox
+                        {
+                            PlaceholderText = "Preset name",
+                            FontSize = OsuFont.DEFAULT_FONT_SIZE,
+                            RelativeSizeAxes = Axes.X,
+                            SelectAllOnFocus = true,
+                        },
+                        saveButton = new RoundedButton
+                        {
+                            Height = 40,
+                            RelativeSizeAxes = Axes.X,
+                            MatchingFilter = true,
+                            Text = WebCommonStrings.ButtonsSave,
+                        }
+                    }
+                };
+
+                saveButton.Action += save;
+                textBox.OnCommit += (_, _) => save();
+            }
+
+            protected override void PopIn()
+            {
+                string defaultName = skins.CurrentSkinInfo.Value?.Value?.Name ?? "My Preset";
+                textBox.Text = defaultName;
+                textBox.TakeFocus();
+
+                base.PopIn();
+            }
+
+            private void save()
+            {
+                if (!string.IsNullOrWhiteSpace(textBox.Text))
+                {
+                    presetManager.SavePreset(textBox.Text);
+                    PopOut();
+                }
+            }
+        }
+
+        public partial class DeletePresetButton : DangerousSettingsButtonV2
+        {
+            [Resolved]
+            private SkinPresetManager presetManager { get; set; }
+
+            [Resolved(CanBeNull = true)]
+            private IDialogOverlay dialogOverlay { get; set; }
+
+            [BackgroundDependencyLoader]
+            private void load()
+            {
+                Text = "Delete preset";
+                Action = delete;
+            }
+
+            protected override void LoadComplete()
+            {
+                base.LoadComplete();
+
+                presetManager.CurrentPreset.BindValueChanged(preset =>
+                {
+                    Enabled.Value = preset.NewValue != null && preset.NewValue.Id != Guid.Empty;
+                }, true);
+            }
+
+            private void delete()
+            {
+                var current = presetManager.CurrentPreset.Value;
+                if (current != null && current.Id != Guid.Empty)
+                {
+                    dialogOverlay?.Push(new PresetDeleteDialog(current, presetManager));
+                }
+            }
+        }
+
+        public partial class PresetDeleteDialog : DeletionDialog
+        {
+            public PresetDeleteDialog(SkinPreset preset, SkinPresetManager manager)
+            {
+                BodyText = preset.Name;
+                DangerousAction = () => manager.DeletePreset(preset);
+            }
         }
 
         public partial class RenameSkinButton : SettingsButtonV2, IHasPopover

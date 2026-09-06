@@ -162,6 +162,8 @@ namespace osu.Game
 
         protected SkinManager SkinManager { get; private set; }
 
+        protected SkinPresetManager SkinPresetManager { get; private set; }
+
         protected RealmRulesetStore RulesetStore { get; private set; }
 
         protected RealmKeyBindingStore KeyBindingStore { get; private set; }
@@ -302,6 +304,7 @@ namespace osu.Game
 
             dependencies.Cache(SkinManager = new SkinManager(Storage, realm, Host, Resources, Audio, Scheduler));
             dependencies.CacheAs<ISkinSource>(SkinManager);
+            dependencies.Cache(SkinPresetManager = new SkinPresetManager(Storage, SkinManager, LocalConfig));
 
             EndpointConfiguration endpoints = CreateEndpoints();
 
