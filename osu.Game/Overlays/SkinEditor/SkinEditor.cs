@@ -112,6 +112,11 @@ namespace osu.Game.Overlays.SkinEditor
         [Resolved]
         private ExternalEditOverlay? externalEditOverlay { get; set; }
 
+        [Resolved]
+        private SkinPresetManager presetManager { get; set; } = null!;
+
+        private MenuItem presetsMenuItem = null!;
+
         private Task? externalEditOperation;
 
         public SkinEditor()
@@ -189,6 +194,7 @@ namespace osu.Game.Overlays.SkinEditor
                                                         cloneMenuItem = new EditorMenuItem(CommonStrings.Clone, MenuItemType.Standard, Clone) { Hotkey = new Hotkey(GlobalAction.EditorCloneSelection) },
                                                     }
                                                 },
+                                                presetsMenuItem = new MenuItem("Presets"),
                                             }
                                         },
                                         headerText = new OsuTextFlowContainer
@@ -285,6 +291,39 @@ namespace osu.Game.Overlays.SkinEditor
             SelectedComponents.BindCollectionChanged((_, _) => Scheduler.AddOnce(populateSettings), true);
 
             selectedTarget.BindValueChanged(targetChanged, true);
+
+            presetManager.Presets.BindCollectionChanged((_, _) => updatePresetsMenu(), true);
+        }
+
+        private void updatePresetsMenu()
+        {
+            var items = new List<OsuMenuItem>
+            {
+                new EditorMenuItem("Save Preset...", MenuItemType.Standard, () =>
+                {
+                    Save(false);
+                    string skinName = currentSkin.Value?.SkinInfo?.Value?.Name ?? "Preset";
+                    presetManager.SavePreset(skinName);
+                    onScreenDisplay?.Display(new SkinEditorToast("Preset saved", skinName));
+                }),
+            };
+
+            if (presetManager.Presets.Any())
+            {
+                items.Add(new OsuMenuItemSpacer());
+
+                foreach (var preset in presetManager.Presets)
+                {
+                    var p = preset;
+                    items.Add(new EditorMenuItem(p.Name, MenuItemType.Standard, () =>
+                    {
+                        presetManager.ApplyPreset(p);
+                        onScreenDisplay?.Display(new SkinEditorToast("Preset applied", p.Name));
+                    }));
+                }
+            }
+
+            presetsMenuItem.Items = items;
         }
 
         private async Task editExternally()

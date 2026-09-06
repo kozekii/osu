@@ -4,6 +4,7 @@
 #nullable disable
 
 using System;
+using System.Collections.Generic;
 using Newtonsoft.Json;
 
 namespace osu.Game.Skinning
@@ -46,6 +47,13 @@ namespace osu.Game.Skinning
 
         [JsonProperty("auto_cursor_size")]
         public bool? AutoCursorSize { get; set; }
+
+        /// <summary>
+        /// Serialised layout JSON blobs for each <see cref="GlobalSkinnableContainers"/> target
+        /// (e.g. "MainHUDComponents", "Playfield", "SongSelect"), saving characters, text, counters, etc.
+        /// </summary>
+        [JsonProperty("layouts_json")]
+        public Dictionary<string, string> LayoutsJson { get; set; } = new Dictionary<string, string>();
 
         [JsonProperty("created_at")]
         public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;

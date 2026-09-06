@@ -91,7 +91,7 @@ namespace osu.Game.Skinning
             var currentHitsound = skins.CurrentHitsoundSkinInfo.Value;
             var currentCursor = skins.CurrentCursorSkinInfo.Value;
 
-            return new SkinPreset
+            var preset = new SkinPreset
             {
                 Id = Guid.NewGuid(),
                 Name = name.Trim(),
@@ -107,6 +107,26 @@ namespace osu.Game.Skinning
                 AutoCursorSize = config.Get<bool>(OsuSetting.AutoCursorSize),
                 CreatedAt = DateTimeOffset.UtcNow
             };
+
+            // Capture full skin editor layout customizations (characters, text, counters, HUD, etc.)
+            var skinInstance = skins.CurrentSkin.Value;
+            if (skinInstance != null)
+            {
+                foreach (var kvp in skinInstance.LayoutInfos)
+                {
+                    try
+                    {
+                        string json = JsonConvert.SerializeObject(kvp.Value, new JsonSerializerSettings { Formatting = Formatting.Indented });
+                        preset.LayoutsJson[kvp.Key.ToString()] = json;
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Log($"Failed to serialize layout for {kvp.Key}: {ex.Message}", level: LogLevel.Error);
+                    }
+                }
+            }
+
+            return preset;
         }
 
         public void SavePreset(string name)
@@ -134,6 +154,24 @@ namespace osu.Game.Skinning
                 existing.CursorRotation = config.Get<bool>(OsuSetting.CursorRotation);
                 existing.AutoCursorSize = config.Get<bool>(OsuSetting.AutoCursorSize);
                 existing.CreatedAt = DateTimeOffset.UtcNow;
+
+                existing.LayoutsJson.Clear();
+                var skinInstance = skins.CurrentSkin.Value;
+                if (skinInstance != null)
+                {
+                    foreach (var kvp in skinInstance.LayoutInfos)
+                    {
+                        try
+                        {
+                            string json = JsonConvert.SerializeObject(kvp.Value, new JsonSerializerSettings { Formatting = Formatting.Indented });
+                            existing.LayoutsJson[kvp.Key.ToString()] = json;
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Log($"Failed to serialize layout for {kvp.Key}: {ex.Message}", level: LogLevel.Error);
+                        }
+                    }
+                }
 
                 savePresets();
                 CurrentPreset.Value = existing;
@@ -171,7 +209,40 @@ namespace osu.Game.Skinning
             // Apply visual skin
             var targetSkin = skins.GetAllUsableSkins().FirstOrDefault(s => s.ID == preset.SkinId);
             if (targetSkin != null)
-                skins.CurrentSkinInfo.Value = targetSkin;
+            {
+                if (skins.CurrentSkinInfo.Value?.ID != targetSkin.ID)
+                    skins.CurrentSkinInfo.Value = targetSkin;
+            }
+
+            // Apply layout customizations (characters, text, HUD components, etc.)
+            if (preset.LayoutsJson != null && preset.LayoutsJson.Count > 0)
+            {
+                var activeSkin = skins.CurrentSkin.Value;
+                if (activeSkin != null)
+                {
+                    activeSkin.LayoutInfos.Clear();
+
+                    foreach (var kvp in preset.LayoutsJson)
+                    {
+                        if (Enum.TryParse<GlobalSkinnableContainers>(kvp.Key, out var container))
+                        {
+                            try
+                            {
+                                var layoutInfo = JsonConvert.DeserializeObject<SkinLayoutInfo>(kvp.Value);
+                                if (layoutInfo != null)
+                                    activeSkin.LayoutInfos[container] = layoutInfo;
+                            }
+                            catch (Exception ex)
+                            {
+                                Logger.Log($"Failed to deserialize layout for {kvp.Key}: {ex.Message}", level: LogLevel.Error);
+                            }
+                        }
+                    }
+
+                    skins.Save(activeSkin);
+                    skins.CurrentSkin.TriggerChange();
+                }
+            }
 
             // Apply hitsound skin
             if (preset.HitsoundSkinId.HasValue && preset.HitsoundSkinId.Value != SkinInfo.USE_CURRENT_SKIN)
