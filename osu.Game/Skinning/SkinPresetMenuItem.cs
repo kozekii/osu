@@ -13,7 +13,7 @@ namespace osu.Game.Skinning
     {
         public SkinPreset Preset { get; }
 
-        public SkinPresetMenuItem(SkinPreset preset, Action action)
+        public SkinPresetMenuItem(SkinPreset preset, Action action = null)
             : base(preset.Name, MenuItemType.Standard, action)
         {
             Preset = preset;

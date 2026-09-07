@@ -293,20 +293,32 @@ namespace osu.Game.Overlays.SkinEditor
             selectedTarget.BindValueChanged(targetChanged, true);
 
             presetManager.Presets.BindCollectionChanged((_, _) => updatePresetsMenu(), true);
+            presetManager.CurrentPreset.BindValueChanged(_ => updatePresetsMenu(), true);
         }
 
         private void updatePresetsMenu()
         {
             var items = new List<OsuMenuItem>
             {
-                new EditorMenuItem("Save Preset...", MenuItemType.Standard, () =>
+                new EditorMenuItem("Save As New Preset...", MenuItemType.Standard, () =>
                 {
                     Save(false);
                     string skinName = currentSkin.Value?.SkinInfo?.Value?.Name ?? "Preset";
                     presetManager.SavePreset(skinName);
-                    onScreenDisplay?.Display(new SkinEditorToast("Preset saved", skinName));
+                    onScreenDisplay?.Display(new SkinPresetToast("Preset saved", skinName));
                 }),
             };
+
+            if (presetManager.CurrentPreset.Value != null)
+            {
+                var cur = presetManager.CurrentPreset.Value;
+                items.Add(new EditorMenuItem($"Overwrite \"{cur.Name}\"", MenuItemType.Standard, () =>
+                {
+                    Save(false);
+                    presetManager.OverwritePreset(cur);
+                    onScreenDisplay?.Display(new SkinPresetToast("Preset overwritten", cur.Name));
+                }));
+            }
 
             if (presetManager.Presets.Any())
             {
@@ -315,11 +327,29 @@ namespace osu.Game.Overlays.SkinEditor
                 foreach (var preset in presetManager.Presets)
                 {
                     var p = preset;
-                    items.Add(new SkinPresetMenuItem(p, () =>
+                    var presetItem = new SkinPresetMenuItem(p)
                     {
-                        presetManager.ApplyPreset(p);
-                        onScreenDisplay?.Display(new SkinEditorToast("Preset applied", p.Name));
-                    }));
+                        Items = new OsuMenuItem[]
+                        {
+                            new EditorMenuItem("Load", MenuItemType.Standard, () =>
+                            {
+                                presetManager.ApplyPreset(p);
+                                onScreenDisplay?.Display(new SkinPresetToast("Preset loaded", p.Name));
+                            }),
+                            new EditorMenuItem("Overwrite with current", MenuItemType.Standard, () =>
+                            {
+                                Save(false);
+                                presetManager.OverwritePreset(p);
+                                onScreenDisplay?.Display(new SkinPresetToast("Preset overwritten", p.Name));
+                            }),
+                            new EditorMenuItem(Web.CommonStrings.ButtonsDelete, MenuItemType.Destructive, () =>
+                            {
+                                dialogOverlay?.Push(new PresetDeleteDialog(p, presetManager));
+                            }),
+                        }
+                    };
+
+                    items.Add(presetItem);
                 }
             }
 

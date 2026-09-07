@@ -17,6 +17,7 @@ using osu.Game.Graphics.UserInterface;
 using osu.Game.Localisation;
 using osu.Game.Overlays;
 using osu.Game.Overlays.Dialog;
+using osu.Game.Overlays.OSD;
 using osu.Game.Skinning;
 using osuTK;
 using WebCommonStrings = osu.Game.Resources.Localisation.Web.CommonStrings;
@@ -294,6 +295,9 @@ namespace osu.Game.Screens.Edit.Components.Menus
                 [Resolved(CanBeNull = true)]
                 private IDialogOverlay? dialogOverlay { get; set; }
 
+                [Resolved(CanBeNull = true)]
+                private OnScreenDisplay? onScreenDisplay { get; set; }
+
                 [Resolved]
                 private SkinPresetManager presetManager { get; set; } = null!;
 
@@ -305,6 +309,16 @@ namespace osu.Game.Screens.Edit.Components.Menus
 
                 public MenuItem[] ContextMenuItems => new MenuItem[]
                 {
+                    new OsuMenuItem("Load", MenuItemType.Standard, () =>
+                    {
+                        presetManager.ApplyPreset(presetItem.Preset);
+                        onScreenDisplay?.Display(new SkinPresetToast("Preset loaded", presetItem.Preset.Name));
+                    }),
+                    new OsuMenuItem("Overwrite with current", MenuItemType.Standard, () =>
+                    {
+                        presetManager.OverwritePreset(presetItem.Preset);
+                        onScreenDisplay?.Display(new SkinPresetToast("Preset overwritten", presetItem.Preset.Name));
+                    }),
                     new OsuMenuItem(CommonStrings.Rename, MenuItemType.Standard, this.ShowPopover),
                     new OsuMenuItem(WebCommonStrings.ButtonsDelete, MenuItemType.Destructive, () =>
                     {

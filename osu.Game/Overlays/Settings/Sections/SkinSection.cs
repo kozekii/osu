@@ -23,6 +23,7 @@ using osu.Game.Graphics.UserInterface;
 using osu.Game.Graphics.UserInterfaceV2;
 using osu.Game.Localisation;
 using osu.Game.Overlays.Dialog;
+using osu.Game.Overlays.OSD;
 using osu.Game.Overlays.SkinEditor;
 using osu.Game.Skinning;
 using osuTK;
@@ -63,7 +64,6 @@ namespace osu.Game.Overlays.Settings.Sections
         private RealmAccess realm { get; set; }
 
         private IDisposable realmSubscription;
-        private bool isApplyingPreset;
 
         [BackgroundDependencyLoader(permitNulls: true)]
         private void load([CanBeNull] SkinEditorOverlay skinEditor)
@@ -84,9 +84,21 @@ namespace osu.Game.Overlays.Settings.Sections
                     Padding = SettingsPanel.CONTENT_PADDING,
                     Children = new Drawable[]
                     {
+                        new LoadPresetButton(presetDropdown.Current) { Padding = new MarginPadding { Right = 2.5f }, RelativeSizeAxes = Axes.X, Width = 0.5f },
+                        new OverwritePresetButton(presetDropdown.Current) { Padding = new MarginPadding { Left = 2.5f }, RelativeSizeAxes = Axes.X, Width = 0.5f },
+                    }
+                },
+                new FillFlowContainer
+                {
+                    RelativeSizeAxes = Axes.X,
+                    AutoSizeAxes = Axes.Y,
+                    Direction = FillDirection.Horizontal,
+                    Padding = SettingsPanel.CONTENT_PADDING,
+                    Children = new Drawable[]
+                    {
                         new SavePresetButton { Padding = new MarginPadding { Right = 2.5f }, RelativeSizeAxes = Axes.X, Width = 1 / 3f },
-                        new RenamePresetButton { Padding = new MarginPadding { Horizontal = 2.5f }, RelativeSizeAxes = Axes.X, Width = 1 / 3f },
-                        new DeletePresetButton { Padding = new MarginPadding { Left = 2.5f }, RelativeSizeAxes = Axes.X, Width = 1 / 3f },
+                        new RenamePresetButton(presetDropdown.Current) { Padding = new MarginPadding { Horizontal = 2.5f }, RelativeSizeAxes = Axes.X, Width = 1 / 3f },
+                        new DeletePresetButton(presetDropdown.Current) { Padding = new MarginPadding { Left = 2.5f }, RelativeSizeAxes = Axes.X, Width = 1 / 3f },
                     }
                 },
                 new SettingsItemV2(skinDropdown = new SkinDropdown
@@ -147,24 +159,8 @@ namespace osu.Game.Overlays.Settings.Sections
 
             presetManager.CurrentPreset.BindValueChanged(preset =>
             {
-                if (isApplyingPreset)
-                    return;
-
                 presetDropdown.Current.Value = preset.NewValue ?? no_preset;
             }, true);
-
-            presetDropdown.Current.BindValueChanged(preset =>
-            {
-                if (isApplyingPreset)
-                    return;
-
-                if (preset.NewValue != null && preset.NewValue.Id != Guid.Empty)
-                {
-                    isApplyingPreset = true;
-                    presetManager.ApplyPreset(preset.NewValue);
-                    isApplyingPreset = false;
-                }
-            });
 
             realmSubscription = realm.RegisterForNotifications(_ => realm.Realm.All<SkinInfo>()
                                                                          .Where(s => !s.DeletePending)
@@ -190,16 +186,8 @@ namespace osu.Game.Overlays.Settings.Sections
 
         private void onManualSkinConfigChange()
         {
-            if (isApplyingPreset)
-                return;
-
-            if (presetDropdown.Current.Value != no_preset)
-            {
-                isApplyingPreset = true;
+            if (presetManager.CurrentPreset.Value != null)
                 presetManager.CurrentPreset.Value = null;
-                presetDropdown.Current.Value = no_preset;
-                isApplyingPreset = false;
-            }
         }
 
         private void updatePresets()
@@ -255,12 +243,92 @@ namespace osu.Game.Overlays.Settings.Sections
             protected override LocalisableString GenerateItemText(Live<SkinInfo> item) => item.ToString();
         }
 
+        public partial class LoadPresetButton : SettingsButtonV2
+        {
+            [Resolved]
+            private SkinPresetManager presetManager { get; set; }
+
+            [Resolved(CanBeNull = true)]
+            private OnScreenDisplay onScreenDisplay { get; set; }
+
+            private readonly IBindable<SkinPreset> selectedPreset;
+
+            public LoadPresetButton(IBindable<SkinPreset> selectedPreset)
+            {
+                this.selectedPreset = selectedPreset;
+            }
+
+            [BackgroundDependencyLoader]
+            private void load()
+            {
+                Text = "Load preset";
+                Action = () =>
+                {
+                    if (selectedPreset.Value != null && selectedPreset.Value.Id != Guid.Empty)
+                    {
+                        presetManager.ApplyPreset(selectedPreset.Value);
+                        onScreenDisplay?.Display(new SkinPresetToast("Preset loaded", selectedPreset.Value.Name));
+                    }
+                };
+            }
+
+            protected override void LoadComplete()
+            {
+                base.LoadComplete();
+
+                selectedPreset.BindValueChanged(preset =>
+                {
+                    Enabled.Value = preset.NewValue != null && preset.NewValue.Id != Guid.Empty;
+                }, true);
+            }
+        }
+
+        public partial class OverwritePresetButton : SettingsButtonV2
+        {
+            [Resolved]
+            private SkinPresetManager presetManager { get; set; }
+
+            [Resolved(CanBeNull = true)]
+            private OnScreenDisplay onScreenDisplay { get; set; }
+
+            private readonly IBindable<SkinPreset> selectedPreset;
+
+            public OverwritePresetButton(IBindable<SkinPreset> selectedPreset)
+            {
+                this.selectedPreset = selectedPreset;
+            }
+
+            [BackgroundDependencyLoader]
+            private void load()
+            {
+                Text = "Overwrite";
+                Action = () =>
+                {
+                    if (selectedPreset.Value != null && selectedPreset.Value.Id != Guid.Empty)
+                    {
+                        presetManager.OverwritePreset(selectedPreset.Value);
+                        onScreenDisplay?.Display(new SkinPresetToast("Preset overwritten", selectedPreset.Value.Name));
+                    }
+                };
+            }
+
+            protected override void LoadComplete()
+            {
+                base.LoadComplete();
+
+                selectedPreset.BindValueChanged(preset =>
+                {
+                    Enabled.Value = preset.NewValue != null && preset.NewValue.Id != Guid.Empty;
+                }, true);
+            }
+        }
+
         public partial class SavePresetButton : SettingsButtonV2, IHasPopover
         {
             [BackgroundDependencyLoader]
             private void load()
             {
-                Text = "Save preset";
+                Text = "Save new...";
                 Action = this.ShowPopover;
             }
 
@@ -274,6 +342,9 @@ namespace osu.Game.Overlays.Settings.Sections
 
             [Resolved]
             private SkinManager skins { get; set; }
+
+            [Resolved(CanBeNull = true)]
+            private OnScreenDisplay onScreenDisplay { get; set; }
 
             private readonly FocusedTextBox textBox;
 
@@ -327,6 +398,7 @@ namespace osu.Game.Overlays.Settings.Sections
                 if (!string.IsNullOrWhiteSpace(textBox.Text))
                 {
                     presetManager.SavePreset(textBox.Text);
+                    onScreenDisplay?.Display(new SkinPresetToast("Preset saved", textBox.Text));
                     PopOut();
                 }
             }
@@ -336,6 +408,13 @@ namespace osu.Game.Overlays.Settings.Sections
         {
             [Resolved]
             private SkinPresetManager presetManager { get; set; }
+
+            private readonly IBindable<SkinPreset> selectedPreset;
+
+            public RenamePresetButton(IBindable<SkinPreset> selectedPreset)
+            {
+                this.selectedPreset = selectedPreset;
+            }
 
             [BackgroundDependencyLoader]
             private void load()
@@ -348,13 +427,13 @@ namespace osu.Game.Overlays.Settings.Sections
             {
                 base.LoadComplete();
 
-                presetManager.CurrentPreset.BindValueChanged(preset =>
+                selectedPreset.BindValueChanged(preset =>
                 {
                     Enabled.Value = preset.NewValue != null && preset.NewValue.Id != Guid.Empty;
                 }, true);
             }
 
-            public Popover GetPopover() => new RenamePresetPopover(presetManager.CurrentPreset.Value, presetManager);
+            public Popover GetPopover() => new RenamePresetPopover(selectedPreset.Value, presetManager);
         }
 
         public partial class DeletePresetButton : DangerousSettingsButtonV2
@@ -364,6 +443,13 @@ namespace osu.Game.Overlays.Settings.Sections
 
             [Resolved(CanBeNull = true)]
             private IDialogOverlay dialogOverlay { get; set; }
+
+            private readonly IBindable<SkinPreset> selectedPreset;
+
+            public DeletePresetButton(IBindable<SkinPreset> selectedPreset)
+            {
+                this.selectedPreset = selectedPreset;
+            }
 
             [BackgroundDependencyLoader]
             private void load()
@@ -376,7 +462,7 @@ namespace osu.Game.Overlays.Settings.Sections
             {
                 base.LoadComplete();
 
-                presetManager.CurrentPreset.BindValueChanged(preset =>
+                selectedPreset.BindValueChanged(preset =>
                 {
                     Enabled.Value = preset.NewValue != null && preset.NewValue.Id != Guid.Empty;
                 }, true);
@@ -384,7 +470,7 @@ namespace osu.Game.Overlays.Settings.Sections
 
             private void delete()
             {
-                var current = presetManager.CurrentPreset.Value;
+                var current = selectedPreset.Value;
                 if (current != null && current.Id != Guid.Empty)
                 {
                     dialogOverlay?.Push(new PresetDeleteDialog(current, presetManager));

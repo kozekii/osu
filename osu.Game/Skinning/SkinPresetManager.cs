@@ -185,6 +185,53 @@ namespace osu.Game.Skinning
             }
         }
 
+        public void OverwritePreset(SkinPreset preset)
+        {
+            if (preset == null)
+                return;
+
+            var matching = Presets.FirstOrDefault(p => p.Id == preset.Id);
+            if (matching == null)
+                return;
+
+            var currentSkin = skins.CurrentSkinInfo.Value;
+            var currentHitsound = skins.CurrentHitsoundSkinInfo.Value;
+            var currentCursor = skins.CurrentCursorSkinInfo.Value;
+
+            matching.SkinId = currentSkin?.ID ?? SkinInfo.ARGON_SKIN;
+            matching.SkinName = currentSkin?.ToString() ?? string.Empty;
+            matching.HitsoundSkinId = currentHitsound?.ID;
+            matching.HitsoundSkinName = currentHitsound?.ToString() ?? string.Empty;
+            matching.CursorSkinId = currentCursor?.ID;
+            matching.CursorSkinName = currentCursor?.ToString() ?? string.Empty;
+            matching.GameplayCursorSize = config.Get<float>(OsuSetting.GameplayCursorSize);
+            matching.MenuCursorSize = config.Get<float>(OsuSetting.MenuCursorSize);
+            matching.CursorRotation = config.Get<bool>(OsuSetting.CursorRotation);
+            matching.AutoCursorSize = config.Get<bool>(OsuSetting.AutoCursorSize);
+            matching.CreatedAt = DateTimeOffset.UtcNow;
+
+            matching.LayoutsJson.Clear();
+            var skinInstance = skins.CurrentSkin.Value;
+            if (skinInstance != null)
+            {
+                foreach (var kvp in skinInstance.LayoutInfos)
+                {
+                    try
+                    {
+                        string json = JsonConvert.SerializeObject(kvp.Value, new JsonSerializerSettings { Formatting = Formatting.Indented });
+                        matching.LayoutsJson[kvp.Key.ToString()] = json;
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Log($"Failed to serialize layout for {kvp.Key}: {ex.Message}", level: LogLevel.Error);
+                    }
+                }
+            }
+
+            savePresets();
+            CurrentPreset.Value = matching;
+        }
+
         public void RenamePreset(SkinPreset preset, string newName)
         {
             if (preset == null || string.IsNullOrWhiteSpace(newName))
