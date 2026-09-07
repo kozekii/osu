@@ -354,69 +354,7 @@ namespace osu.Game.Overlays.Settings.Sections
                 }, true);
             }
 
-            public Popover GetPopover() => new RenamePresetPopover();
-        }
-
-        public partial class RenamePresetPopover : OsuPopover
-        {
-            [Resolved]
-            private SkinPresetManager presetManager { get; set; }
-
-            private readonly FocusedTextBox textBox;
-
-            public RenamePresetPopover()
-            {
-                AutoSizeAxes = Axes.Both;
-                Origin = Anchor.TopCentre;
-
-                RoundedButton renameButton;
-
-                Child = new FillFlowContainer
-                {
-                    Direction = FillDirection.Vertical,
-                    AutoSizeAxes = Axes.Y,
-                    Width = 250,
-                    Spacing = new Vector2(10f),
-                    Children = new Drawable[]
-                    {
-                        textBox = new FocusedTextBox
-                        {
-                            PlaceholderText = "Preset name",
-                            FontSize = OsuFont.DEFAULT_FONT_SIZE,
-                            RelativeSizeAxes = Axes.X,
-                            SelectAllOnFocus = true,
-                        },
-                        renameButton = new RoundedButton
-                        {
-                            Height = 40,
-                            RelativeSizeAxes = Axes.X,
-                            MatchingFilter = true,
-                            Text = WebCommonStrings.ButtonsSave,
-                        }
-                    }
-                };
-
-                renameButton.Action += rename;
-                textBox.OnCommit += (_, _) => rename();
-            }
-
-            protected override void PopIn()
-            {
-                textBox.Text = presetManager.CurrentPreset.Value?.Name ?? string.Empty;
-                textBox.TakeFocus();
-
-                base.PopIn();
-            }
-
-            private void rename()
-            {
-                var current = presetManager.CurrentPreset.Value;
-                if (current != null && current.Id != Guid.Empty && !string.IsNullOrWhiteSpace(textBox.Text))
-                {
-                    presetManager.RenamePreset(current, textBox.Text);
-                    PopOut();
-                }
-            }
+            public Popover GetPopover() => new RenamePresetPopover(presetManager.CurrentPreset.Value, presetManager);
         }
 
         public partial class DeletePresetButton : DangerousSettingsButtonV2
@@ -451,15 +389,6 @@ namespace osu.Game.Overlays.Settings.Sections
                 {
                     dialogOverlay?.Push(new PresetDeleteDialog(current, presetManager));
                 }
-            }
-        }
-
-        public partial class PresetDeleteDialog : DeletionDialog
-        {
-            public PresetDeleteDialog(SkinPreset preset, SkinPresetManager manager)
-            {
-                BodyText = preset.Name;
-                DangerousAction = () => manager.DeletePreset(preset);
             }
         }
 

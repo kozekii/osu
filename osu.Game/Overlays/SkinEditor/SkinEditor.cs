@@ -315,7 +315,7 @@ namespace osu.Game.Overlays.SkinEditor
                 foreach (var preset in presetManager.Presets)
                 {
                     var p = preset;
-                    items.Add(new EditorMenuItem(p.Name, MenuItemType.Standard, () =>
+                    items.Add(new SkinPresetMenuItem(p, () =>
                     {
                         presetManager.ApplyPreset(p);
                         onScreenDisplay?.Display(new SkinEditorToast("Preset applied", p.Name));

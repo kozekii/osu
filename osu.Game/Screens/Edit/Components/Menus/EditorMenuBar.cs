@@ -1,9 +1,11 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 using osu.Framework.Allocation;
+using osu.Framework.Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
+using osu.Framework.Graphics.Cursor;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Graphics.Textures;
 using osu.Framework.Graphics.UserInterface;
@@ -12,8 +14,12 @@ using osu.Framework.Localisation;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.UserInterface;
+using osu.Game.Localisation;
 using osu.Game.Overlays;
+using osu.Game.Overlays.Dialog;
+using osu.Game.Skinning;
 using osuTK;
+using WebCommonStrings = osu.Game.Resources.Localisation.Web.CommonStrings;
 
 namespace osu.Game.Screens.Edit.Components.Menus
 {
@@ -239,6 +245,9 @@ namespace osu.Game.Screens.Edit.Components.Menus
                     case StatefulMenuItem stateful:
                         return new EditorStatefulMenuItem(stateful);
 
+                    case SkinPresetMenuItem presetItem:
+                        return new DrawablePresetMenuItem(presetItem);
+
                     default:
                         return new EditorMenuItem(item);
                 }
@@ -276,6 +285,34 @@ namespace osu.Game.Screens.Edit.Components.Menus
 
                     Foreground.Padding = new MarginPadding { Vertical = 2 };
                 }
+            }
+
+            private partial class DrawablePresetMenuItem : EditorMenuItem, IHasContextMenu, IHasPopover
+            {
+                private readonly SkinPresetMenuItem presetItem;
+
+                [Resolved(CanBeNull = true)]
+                private IDialogOverlay? dialogOverlay { get; set; }
+
+                [Resolved]
+                private SkinPresetManager presetManager { get; set; } = null!;
+
+                public DrawablePresetMenuItem(SkinPresetMenuItem item)
+                    : base(item)
+                {
+                    presetItem = item;
+                }
+
+                public MenuItem[] ContextMenuItems => new MenuItem[]
+                {
+                    new OsuMenuItem(CommonStrings.Rename, MenuItemType.Standard, this.ShowPopover),
+                    new OsuMenuItem(WebCommonStrings.ButtonsDelete, MenuItemType.Destructive, () =>
+                    {
+                        dialogOverlay?.Push(new PresetDeleteDialog(presetItem.Preset, presetManager));
+                    }),
+                };
+
+                public Popover GetPopover() => new RenamePresetPopover(presetItem.Preset, presetManager);
             }
         }
     }
