@@ -185,6 +185,29 @@ namespace osu.Game.Skinning
             }
         }
 
+        public void RenamePreset(SkinPreset preset, string newName)
+        {
+            if (preset == null || string.IsNullOrWhiteSpace(newName))
+                return;
+
+            var matching = Presets.FirstOrDefault(p => p.Id == preset.Id);
+            if (matching != null)
+            {
+                matching.Name = newName.Trim();
+                savePresets();
+
+                int index = Presets.IndexOf(matching);
+                if (index != -1)
+                {
+                    Presets.RemoveAt(index);
+                    Presets.Insert(index, matching);
+                }
+
+                if (CurrentPreset.Value?.Id == matching.Id)
+                    CurrentPreset.Value = matching;
+            }
+        }
+
         public void DeletePreset(SkinPreset preset)
         {
             if (preset == null)

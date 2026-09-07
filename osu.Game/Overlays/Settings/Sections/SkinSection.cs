@@ -84,8 +84,9 @@ namespace osu.Game.Overlays.Settings.Sections
                     Padding = SettingsPanel.CONTENT_PADDING,
                     Children = new Drawable[]
                     {
-                        new SavePresetButton { Padding = new MarginPadding { Right = 2.5f }, RelativeSizeAxes = Axes.X, Width = 0.5f },
-                        new DeletePresetButton { Padding = new MarginPadding { Left = 2.5f }, RelativeSizeAxes = Axes.X, Width = 0.5f },
+                        new SavePresetButton { Padding = new MarginPadding { Right = 2.5f }, RelativeSizeAxes = Axes.X, Width = 1 / 3f },
+                        new RenamePresetButton { Padding = new MarginPadding { Horizontal = 2.5f }, RelativeSizeAxes = Axes.X, Width = 1 / 3f },
+                        new DeletePresetButton { Padding = new MarginPadding { Left = 2.5f }, RelativeSizeAxes = Axes.X, Width = 1 / 3f },
                     }
                 },
                 new SettingsItemV2(skinDropdown = new SkinDropdown
@@ -326,6 +327,93 @@ namespace osu.Game.Overlays.Settings.Sections
                 if (!string.IsNullOrWhiteSpace(textBox.Text))
                 {
                     presetManager.SavePreset(textBox.Text);
+                    PopOut();
+                }
+            }
+        }
+
+        public partial class RenamePresetButton : SettingsButtonV2, IHasPopover
+        {
+            [Resolved]
+            private SkinPresetManager presetManager { get; set; }
+
+            [BackgroundDependencyLoader]
+            private void load()
+            {
+                Text = CommonStrings.Rename;
+                Action = this.ShowPopover;
+            }
+
+            protected override void LoadComplete()
+            {
+                base.LoadComplete();
+
+                presetManager.CurrentPreset.BindValueChanged(preset =>
+                {
+                    Enabled.Value = preset.NewValue != null && preset.NewValue.Id != Guid.Empty;
+                }, true);
+            }
+
+            public Popover GetPopover() => new RenamePresetPopover();
+        }
+
+        public partial class RenamePresetPopover : OsuPopover
+        {
+            [Resolved]
+            private SkinPresetManager presetManager { get; set; }
+
+            private readonly FocusedTextBox textBox;
+
+            public RenamePresetPopover()
+            {
+                AutoSizeAxes = Axes.Both;
+                Origin = Anchor.TopCentre;
+
+                RoundedButton renameButton;
+
+                Child = new FillFlowContainer
+                {
+                    Direction = FillDirection.Vertical,
+                    AutoSizeAxes = Axes.Y,
+                    Width = 250,
+                    Spacing = new Vector2(10f),
+                    Children = new Drawable[]
+                    {
+                        textBox = new FocusedTextBox
+                        {
+                            PlaceholderText = "Preset name",
+                            FontSize = OsuFont.DEFAULT_FONT_SIZE,
+                            RelativeSizeAxes = Axes.X,
+                            SelectAllOnFocus = true,
+                        },
+                        renameButton = new RoundedButton
+                        {
+                            Height = 40,
+                            RelativeSizeAxes = Axes.X,
+                            MatchingFilter = true,
+                            Text = WebCommonStrings.ButtonsSave,
+                        }
+                    }
+                };
+
+                renameButton.Action += rename;
+                textBox.OnCommit += (_, _) => rename();
+            }
+
+            protected override void PopIn()
+            {
+                textBox.Text = presetManager.CurrentPreset.Value?.Name ?? string.Empty;
+                textBox.TakeFocus();
+
+                base.PopIn();
+            }
+
+            private void rename()
+            {
+                var current = presetManager.CurrentPreset.Value;
+                if (current != null && current.Id != Guid.Empty && !string.IsNullOrWhiteSpace(textBox.Text))
+                {
+                    presetManager.RenamePreset(current, textBox.Text);
                     PopOut();
                 }
             }
