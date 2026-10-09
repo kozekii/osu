@@ -82,10 +82,11 @@ namespace osu.Game.Skinning
             var list = new List<FollowCircleItem>();
 
             // 1. Default (Active Skin)
+            string activeSkinName = skins.CurrentSkinInfo.Value?.PerformRead(s => s.Name) ?? "Default";
             list.Add(new FollowCircleItem
             {
                 Id = "default_skin",
-                Name = $"Active Skin ({skins.CurrentSkinInfo.Value?.Value?.Name ?? "Default"})",
+                Name = $"Active Skin ({activeSkinName})",
                 Type = FollowCircleType.DefaultSkin,
             });
 
@@ -156,7 +157,7 @@ namespace osu.Game.Skinning
             // 3. Scan active skin's files on local disk if present (e.g. wine skins directory or export)
             try
             {
-                string skinName = skins.CurrentSkinInfo.Value?.Value?.Name ?? string.Empty;
+                string skinName = skins.CurrentSkinInfo.Value?.PerformRead(s => s.Name) ?? string.Empty;
                 if (!string.IsNullOrEmpty(skinName))
                 {
                     string wineSkinsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local/share/osu-wine/osu!/Skins");
@@ -264,15 +265,19 @@ namespace osu.Game.Skinning
             // 5. Add custom follow circles from other installed skins
             try
             {
+                Guid? activeId = skins.CurrentSkinInfo.Value?.ID;
+
                 foreach (var s in skins.GetAllUsableSkins())
                 {
-                    if (s.ID == skins.CurrentSkinInfo.Value?.ID || s.ID == SkinInfo.RANDOM_SKIN)
+                    if (s.ID == activeId || s.ID == SkinInfo.RANDOM_SKIN)
                         continue;
+
+                    string sName = s.PerformRead(skin => skin.Name);
 
                     list.Add(new FollowCircleItem
                     {
                         Id = $"skin_ref_{s.ID}",
-                        Name = $"[Skin] {s.Value?.Name ?? "Unknown"}",
+                        Name = $"[Skin] {sName}",
                         Type = FollowCircleType.SkinReference,
                         SkinId = s.ID,
                     });

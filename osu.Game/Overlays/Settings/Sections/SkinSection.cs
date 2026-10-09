@@ -41,6 +41,7 @@ namespace osu.Game.Overlays.Settings.Sections
         private SkinDropdown hitsoundSkinDropdown;
         private SkinDropdown cursorSkinDropdown;
         private FormEnumDropdown<FollowCircleMode> followCircleModeDropdown;
+        private SettingsItemV2 followCircleSettingItem;
         private FollowCircleDropdown followCircleDropdown;
         private FormCheckBox circularMaskCheckbox;
 
@@ -139,7 +140,7 @@ namespace osu.Game.Overlays.Settings.Sections
                 {
                     Caption = "Follow circle mode",
                 }),
-                new SettingsItemV2(followCircleDropdown = new FollowCircleDropdown
+                followCircleSettingItem = new SettingsItemV2(followCircleDropdown = new FollowCircleDropdown
                 {
                     AlwaysShowSearchBar = true,
                     AllowNonContiguousMatching = true,
@@ -230,7 +231,7 @@ namespace osu.Game.Overlays.Settings.Sections
 
                 followCircleManager.Mode.BindValueChanged(mode =>
                 {
-                    followCircleDropdown.Current.Disabled = mode.NewValue != FollowCircleMode.Selected;
+                    followCircleSettingItem.CanBeShown.Value = mode.NewValue == FollowCircleMode.Selected;
                 }, true);
             }
         }
