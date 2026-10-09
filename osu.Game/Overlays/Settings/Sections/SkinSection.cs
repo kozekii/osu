@@ -40,6 +40,9 @@ namespace osu.Game.Overlays.Settings.Sections
         private SkinDropdown skinDropdown;
         private SkinDropdown hitsoundSkinDropdown;
         private SkinDropdown cursorSkinDropdown;
+        private FormEnumDropdown<FollowCircleMode> followCircleModeDropdown;
+        private FollowCircleDropdown followCircleDropdown;
+        private FormCheckBox circularMaskCheckbox;
 
         public override LocalisableString Header => SkinSettingsStrings.SkinSectionHeader;
 
@@ -48,7 +51,7 @@ namespace osu.Game.Overlays.Settings.Sections
             Icon = OsuIcon.SkinB
         };
 
-        public override IEnumerable<LocalisableString> FilterTerms => base.FilterTerms.Concat(new LocalisableString[] { "skins", "hitsounds", "cursor", "cursors", "preset", "presets" });
+        public override IEnumerable<LocalisableString> FilterTerms => base.FilterTerms.Concat(new LocalisableString[] { "skins", "hitsounds", "cursor", "cursors", "preset", "presets", "followcircle", "follow circle" });
 
         private readonly List<Live<SkinInfo>> dropdownItems = new List<Live<SkinInfo>>();
         private readonly List<Live<SkinInfo>> hitsoundDropdownItems = new List<Live<SkinInfo>>();
@@ -59,6 +62,9 @@ namespace osu.Game.Overlays.Settings.Sections
 
         [Resolved]
         private SkinPresetManager presetManager { get; set; }
+
+        [Resolved(CanBeNull = true)]
+        private FollowCircleManager followCircleManager { get; set; }
 
         [Resolved]
         private RealmAccess realm { get; set; }
@@ -129,6 +135,25 @@ namespace osu.Game.Overlays.Settings.Sections
                     Padding = SettingsPanel.CONTENT_PADDING,
                     Child = new CursorPreview(),
                 },
+                new SettingsItemV2(followCircleModeDropdown = new FormEnumDropdown<FollowCircleMode>
+                {
+                    Caption = "Follow circle mode",
+                }),
+                new SettingsItemV2(followCircleDropdown = new FollowCircleDropdown
+                {
+                    AlwaysShowSearchBar = true,
+                    AllowNonContiguousMatching = true,
+                    Caption = "Custom follow circle",
+                }),
+                new SettingsItemV2(circularMaskCheckbox = new FormCheckBox
+                {
+                    Caption = "Circular mask for video follow circles",
+                }),
+                new SettingsButtonV2
+                {
+                    Text = "Open follow circles folder",
+                    Action = () => followCircleManager?.OpenFolder(),
+                },
                 new FillFlowContainer
                 {
                     RelativeSizeAxes = Axes.X,
@@ -182,6 +207,48 @@ namespace osu.Game.Overlays.Settings.Sections
 
             hitsoundSkinDropdown.Current.BindValueChanged(_ => onManualSkinConfigChange());
             cursorSkinDropdown.Current.BindValueChanged(_ => onManualSkinConfigChange());
+
+            if (followCircleManager != null)
+            {
+                followCircleModeDropdown.Current = followCircleManager.Mode;
+                circularMaskCheckbox.Current = followCircleManager.CircularMask;
+
+                followCircleManager.AvailableFollowCircles.BindCollectionChanged((_, _) => updateFollowCircles(), true);
+
+                followCircleDropdown.Current.BindValueChanged(selected =>
+                {
+                    if (selected.NewValue != null)
+                        followCircleManager.CustomFollowCircleId.Value = selected.NewValue.Id;
+                });
+
+                followCircleManager.CustomFollowCircleId.BindValueChanged(id =>
+                {
+                    var matching = followCircleManager.AvailableFollowCircles.FirstOrDefault(i => i.Id == id.NewValue);
+                    if (matching != null && followCircleDropdown.Current.Value != matching)
+                        followCircleDropdown.Current.Value = matching;
+                }, true);
+
+                followCircleManager.Mode.BindValueChanged(mode =>
+                {
+                    followCircleDropdown.Current.Disabled = mode.NewValue != FollowCircleMode.Selected;
+                }, true);
+            }
+        }
+
+        private void updateFollowCircles()
+        {
+            if (followCircleManager == null) return;
+
+            var items = followCircleManager.AvailableFollowCircles.ToList();
+            Schedule(() =>
+            {
+                followCircleDropdown.Items = items;
+                var currentSelected = items.FirstOrDefault(i => i.Id == followCircleManager.CustomFollowCircleId.Value);
+                if (currentSelected != null)
+                    followCircleDropdown.Current.Value = currentSelected;
+                else if (items.Count > 0 && followCircleDropdown.Current.Value == null)
+                    followCircleDropdown.Current.Value = items[0];
+            });
         }
 
         private void onManualSkinConfigChange()
@@ -241,6 +308,11 @@ namespace osu.Game.Overlays.Settings.Sections
         private partial class SkinDropdown : FormDropdown<Live<SkinInfo>>
         {
             protected override LocalisableString GenerateItemText(Live<SkinInfo> item) => item.ToString();
+        }
+
+        private partial class FollowCircleDropdown : FormDropdown<FollowCircleItem>
+        {
+            protected override LocalisableString GenerateItemText(FollowCircleItem item) => item?.Name ?? string.Empty;
         }
 
         public partial class LoadPresetButton : SettingsButtonV2

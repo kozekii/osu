@@ -164,6 +164,8 @@ namespace osu.Game
 
         protected SkinPresetManager SkinPresetManager { get; private set; }
 
+        protected FollowCircleManager FollowCircleManager { get; private set; }
+
         protected RealmRulesetStore RulesetStore { get; private set; }
 
         protected RealmKeyBindingStore KeyBindingStore { get; private set; }
@@ -305,6 +307,7 @@ namespace osu.Game
             dependencies.Cache(SkinManager = new SkinManager(Storage, realm, Host, Resources, Audio, Scheduler));
             dependencies.CacheAs<ISkinSource>(SkinManager);
             dependencies.Cache(SkinPresetManager = new SkinPresetManager(Storage, SkinManager, LocalConfig));
+            dependencies.Cache(FollowCircleManager = new FollowCircleManager(Storage, SkinManager, LocalConfig));
 
             EndpointConfiguration endpoints = CreateEndpoints();
 

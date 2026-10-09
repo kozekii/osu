@@ -42,6 +42,9 @@ namespace osu.Game.Configuration
             SetDefault(OsuSetting.Skin, SkinInfo.ARGON_SKIN.ToString());
             SetDefault(OsuSetting.HitsoundSkin, string.Empty);
             SetDefault(OsuSetting.CursorSkin, string.Empty);
+            SetDefault(OsuSetting.FollowCircleMode, FollowCircleMode.Default);
+            SetDefault(OsuSetting.CustomFollowCircle, string.Empty);
+            SetDefault(OsuSetting.FollowCircleCircularMask, true);
 
             SetDefault(OsuSetting.BeatmapDetailTab, BeatmapDetailTab.Local);
             SetDefault(OsuSetting.BeatmapLeaderboardSortMode, LeaderboardSortMode.Score);
@@ -402,6 +405,9 @@ namespace osu.Game.Configuration
         Skin,
         HitsoundSkin,
         CursorSkin,
+        FollowCircleMode,
+        CustomFollowCircle,
+        FollowCircleCircularMask,
         ScreenshotFormat,
         ScreenshotCaptureMenuCursor,
         BeatmapSkins,
