@@ -10,11 +10,30 @@ using osu.Framework.Logging;
 namespace osu.Game.Utils
 {
     /// <summary>
-    /// Helper for reliably opening directories and files in native file managers on Linux (Wayland, KDE Plasma 6, GNOME, etc.).
-    /// Standard framework xdg-open invocations often fail or hang under modern desktop sessions.
+    /// Helper for reliably opening directories and files in native file managers on Linux (Wayland, Hyprland, KDE Plasma, GNOME, etc.).
+    /// Handles broken/isolated PATH environments and avoids headless DBus daemon traps.
     /// </summary>
     public static class LinuxPathOpener
     {
+        private static ProcessStartInfo createShellProcessInfo(string script)
+        {
+            var psi = new ProcessStartInfo("/bin/sh")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+
+            // Ensure standard system paths are in PATH even if the parent environment is stripped down
+            string currentPath = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+            string standardPath = "/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin";
+            psi.Environment["PATH"] = $"{standardPath}:{currentPath}";
+
+            psi.ArgumentList.Add("-c");
+            psi.ArgumentList.Add($"export PATH=\"{standardPath}:$PATH\"\n{script}");
+
+            return psi;
+        }
+
         /// <summary>
         /// Opens a folder directly in the user's native file manager.
         /// </summary>
@@ -43,31 +62,24 @@ namespace osu.Game.Utils
                 }
 
                 string fullPath = Path.GetFullPath(path);
-                string uri = new Uri(fullPath).AbsoluteUri;
                 string escapedPath = fullPath.Replace("'", "'\\''");
 
-                // Priority pipeline:
-                // 1. Freedesktop FileManager1 DBus (native on KDE Dolphin, GNOME Nautilus, Nemo, Thunar)
-                // 2. gio open (GLib GIO desktop integration)
-                // 3. Direct dolphin execution (KDE default)
-                // 4. Direct nautilus execution (GNOME default)
-                // 5. Direct thunar execution (XFCE default)
-                // 6. xdg-open fallback
-                string command = $"dbus-send --session --dest=org.freedesktop.FileManager1 --type=method_call --reply-timeout=2000 /org/freedesktop/FileManager1 org.freedesktop.FileManager1.ShowFolders array:string:\\\"{uri}\\\" string:\\\"\\\" >/dev/null 2>&1 "
-                               + $"|| gio open '{escapedPath}' >/dev/null 2>&1 "
-                               + $"|| dolphin '{escapedPath}' >/dev/null 2>&1 "
-                               + $"|| nautilus '{escapedPath}' >/dev/null 2>&1 "
-                               + $"|| thunar '{escapedPath}' >/dev/null 2>&1 "
-                               + $"|| xdg-open '{escapedPath}' >/dev/null 2>&1 &";
+                // Check default file manager via xdg-mime first, then fall back through known managers and standard launchers.
+                // Notice: We avoid raw FileManager1 DBus call because headless background daemons (like nautilus --gapplication-service)
+                // can silently swallow the DBus call under other window managers (like Hyprland) without creating any window!
+                string script = $@"
+target='{escapedPath}'
+case ""$(xdg-mime query default inode/directory 2>/dev/null)"" in
+    *dolphin*) dolphin ""$target"" >/dev/null 2>&1 & exit 0 ;;
+    *nautilus*) nautilus ""$target"" >/dev/null 2>&1 & exit 0 ;;
+    *thunar*) thunar ""$target"" >/dev/null 2>&1 & exit 0 ;;
+    *nemo*) nemo ""$target"" >/dev/null 2>&1 & exit 0 ;;
+    *pcmanfm*) pcmanfm ""$target"" >/dev/null 2>&1 & exit 0 ;;
+esac
+dolphin ""$target"" >/dev/null 2>&1 & exit 0 || nautilus ""$target"" >/dev/null 2>&1 & exit 0 || thunar ""$target"" >/dev/null 2>&1 & exit 0 || nemo ""$target"" >/dev/null 2>&1 & exit 0 || pcmanfm ""$target"" >/dev/null 2>&1 & exit 0 || gio open ""$target"" >/dev/null 2>&1 & exit 0 || xdg-open ""$target"" >/dev/null 2>&1 &
+";
 
-                var psi = new ProcessStartInfo("/bin/sh")
-                {
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                };
-                psi.ArgumentList.Add("-c");
-                psi.ArgumentList.Add(command);
-
+                var psi = createShellProcessInfo(script);
                 Process.Start(psi);
                 return true;
             }
@@ -98,33 +110,24 @@ namespace osu.Game.Utils
                 if (Directory.Exists(fullPath) || !File.Exists(fullPath))
                     return OpenFolder(fullPath);
 
-                string uri = new Uri(fullPath).AbsoluteUri;
                 string escapedPath = fullPath.Replace("'", "'\\''");
                 string parentDir = Path.GetDirectoryName(fullPath) ?? fullPath;
                 string escapedParent = parentDir.Replace("'", "'\\''");
 
-                // Priority pipeline for presenting/selecting items:
-                // 1. Freedesktop FileManager1 ShowItems (highlights item in Dolphin/Nautilus)
-                // 2. dolphin --select
-                // 3. nautilus --select
-                // 4. gio open parent folder
-                // 5. thunar parent folder
-                // 6. xdg-open parent folder
-                string command = $"dbus-send --session --dest=org.freedesktop.FileManager1 --type=method_call --reply-timeout=2000 /org/freedesktop/FileManager1 org.freedesktop.FileManager1.ShowItems array:string:\\\"{uri}\\\" string:\\\"\\\" >/dev/null 2>&1 "
-                               + $"|| dolphin --select '{escapedPath}' >/dev/null 2>&1 "
-                               + $"|| nautilus --select '{escapedPath}' >/dev/null 2>&1 "
-                               + $"|| gio open '{escapedParent}' >/dev/null 2>&1 "
-                               + $"|| thunar '{escapedParent}' >/dev/null 2>&1 "
-                               + $"|| xdg-open '{escapedParent}' >/dev/null 2>&1 &";
+                string script = $@"
+target='{escapedPath}'
+parent='{escapedParent}'
+case ""$(xdg-mime query default inode/directory 2>/dev/null)"" in
+    *dolphin*) dolphin --select ""$target"" >/dev/null 2>&1 & exit 0 ;;
+    *nautilus*) nautilus --select ""$target"" >/dev/null 2>&1 & exit 0 ;;
+    *nemo*) nemo --no-desktop ""$target"" >/dev/null 2>&1 & exit 0 ;;
+    *thunar*) thunar ""$parent"" >/dev/null 2>&1 & exit 0 ;;
+    *pcmanfm*) pcmanfm ""$parent"" >/dev/null 2>&1 & exit 0 ;;
+esac
+dolphin --select ""$target"" >/dev/null 2>&1 & exit 0 || nautilus --select ""$target"" >/dev/null 2>&1 & exit 0 || nemo --no-desktop ""$target"" >/dev/null 2>&1 & exit 0 || thunar ""$parent"" >/dev/null 2>&1 & exit 0 || pcmanfm ""$parent"" >/dev/null 2>&1 & exit 0 || gio open ""$parent"" >/dev/null 2>&1 & exit 0 || xdg-open ""$parent"" >/dev/null 2>&1 &
+";
 
-                var psi = new ProcessStartInfo("/bin/sh")
-                {
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                };
-                psi.ArgumentList.Add("-c");
-                psi.ArgumentList.Add(command);
-
+                var psi = createShellProcessInfo(script);
                 Process.Start(psi);
                 return true;
             }
@@ -136,9 +139,9 @@ namespace osu.Game.Utils
         }
 
         /// <summary>
-        /// Opens a file or folder externally with its default application or file manager.
+        /// Opens a file externally with its default application.
         /// </summary>
-        /// <param name="path">The file or folder path.</param>
+        /// <param name="path">The file path.</param>
         /// <returns>True if the process was successfully launched.</returns>
         public static bool Open(string path)
         {
@@ -157,19 +160,12 @@ namespace osu.Game.Utils
 
                 string escapedPath = fullPath.Replace("'", "'\\''");
 
-                // Priority pipeline for opening a file:
-                // 1. gio open (standard GIO launcher for default desktop app)
-                // 2. xdg-open
-                string command = $"gio open '{escapedPath}' >/dev/null 2>&1 || xdg-open '{escapedPath}' >/dev/null 2>&1 &";
+                string script = $@"
+target='{escapedPath}'
+gio open ""$target"" >/dev/null 2>&1 & exit 0 || xdg-open ""$target"" >/dev/null 2>&1 &
+";
 
-                var psi = new ProcessStartInfo("/bin/sh")
-                {
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                };
-                psi.ArgumentList.Add("-c");
-                psi.ArgumentList.Add(command);
-
+                var psi = createShellProcessInfo(script);
                 Process.Start(psi);
                 return true;
             }
