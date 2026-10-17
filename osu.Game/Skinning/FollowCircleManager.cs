@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using osu.Framework;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics.Rendering;
@@ -19,6 +20,7 @@ using osu.Framework.Utils;
 using osu.Game.Configuration;
 using osu.Game.Extensions;
 using osu.Game.IO;
+using osu.Game.Utils;
 
 namespace osu.Game.Skinning
 {
@@ -66,7 +68,13 @@ namespace osu.Game.Skinning
                 if (!Directory.Exists(path))
                     Directory.CreateDirectory(path);
 
-                Process.Start(new ProcessStartInfo("xdg-open", path) { UseShellExecute = false });
+                if (RuntimeInfo.OS == RuntimeInfo.Platform.Linux)
+                {
+                    LinuxPathOpener.OpenFolder(path);
+                    return;
+                }
+
+                storage.GetStorageForDirectory(follow_circles_folder).PresentExternally();
             }
             catch (Exception ex)
             {

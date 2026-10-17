@@ -1,6 +1,7 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using osu.Framework;
 using osu.Framework.Allocation;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
@@ -9,6 +10,7 @@ using osu.Framework.Platform;
 using osu.Framework.Screens;
 using osu.Game.Localisation;
 using osu.Game.Overlays.Settings.Sections.Maintenance;
+using osu.Game.Utils;
 
 namespace osu.Game.Overlays.Settings.Sections.General
 {
@@ -26,7 +28,13 @@ namespace osu.Game.Overlays.Settings.Sections.General
             {
                 Text = GeneralSettingsStrings.OpenOsuFolder,
                 Keywords = new[] { @"logs", @"files", @"access", "directory" },
-                Action = () => storage.PresentExternally(),
+                Action = () =>
+                {
+                    if (RuntimeInfo.OS == RuntimeInfo.Platform.Linux)
+                        LinuxPathOpener.OpenFolder(storage.GetFullPath(string.Empty));
+                    else
+                        storage.PresentExternally();
+                },
             });
 
             Add(new DangerousSettingsButtonV2

@@ -28,6 +28,7 @@ using osu.Game.Localisation;
 using osu.Game.Online.Multiplayer;
 using osu.Game.Overlays;
 using osu.Game.Screens.OnlinePlay.Match.Components;
+using osu.Game.Utils;
 using osuTK;
 
 namespace osu.Game.Screens.Edit
@@ -195,25 +196,8 @@ namespace osu.Game.Screens.Edit
             {
                 if (RuntimeInfo.OS == RuntimeInfo.Platform.Linux)
                 {
-                    try
-                    {
-                        var psi = new ProcessStartInfo
-                        {
-                            FileName = "/bin/sh",
-                            Arguments = $"-c \"xdg-open '{path}' >/dev/null 2>&1 || dolphin '{path}' >/dev/null 2>&1 || nautilus '{path}' >/dev/null 2>&1 || thunar '{path}' >/dev/null 2>&1 &\"",
-                            UseShellExecute = false,
-                            CreateNoWindow = true,
-                        };
-
-                        Process.Start(psi);
+                    if (LinuxPathOpener.OpenFolder(path))
                         return;
-                    }
-                    catch
-                    {
-                        // Fallback below
-                    }
-
-                    return;
                 }
 
                 // Ensure the trailing separator is present in order to show the folder contents.

@@ -6,7 +6,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using osu.Framework;
 using osu.Framework.Platform;
+using osu.Game.Utils;
 
 namespace osu.Game.IO
 {
@@ -74,9 +76,41 @@ namespace osu.Game.IO
 
         public override void Move(string from, string to) => UnderlyingStorage.Move(MutatePath(from), MutatePath(to));
 
-        public override bool OpenFileExternally(string filename) => UnderlyingStorage.OpenFileExternally(MutatePath(filename));
+        public override bool OpenFileExternally(string filename)
+        {
+            if (RuntimeInfo.OS == RuntimeInfo.Platform.Linux)
+            {
+                string fullPath = GetFullPath(filename);
+                if (LinuxPathOpener.Open(fullPath))
+                    return true;
+            }
 
-        public override bool PresentFileExternally(string filename) => UnderlyingStorage.PresentFileExternally(MutatePath(filename));
+            return UnderlyingStorage.OpenFileExternally(MutatePath(filename));
+        }
+
+        public override bool PresentFileExternally(string filename)
+        {
+            if (RuntimeInfo.OS == RuntimeInfo.Platform.Linux)
+            {
+                string fullPath = GetFullPath(filename);
+                if (LinuxPathOpener.Present(fullPath))
+                    return true;
+            }
+
+            return UnderlyingStorage.PresentFileExternally(MutatePath(filename));
+        }
+
+        public new bool PresentExternally()
+        {
+            if (RuntimeInfo.OS == RuntimeInfo.Platform.Linux)
+            {
+                string fullPath = GetFullPath(string.Empty);
+                if (LinuxPathOpener.OpenFolder(fullPath))
+                    return true;
+            }
+
+            return base.PresentExternally();
+        }
 
         public override Storage GetStorageForDirectory(string path)
         {
