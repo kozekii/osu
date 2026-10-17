@@ -11,7 +11,7 @@ namespace osu.Game.Utils
 {
     /// <summary>
     /// Helper for reliably opening directories and files in native file managers on Linux (Wayland, Hyprland, KDE Plasma, GNOME, etc.).
-    /// Handles broken/isolated PATH environments and avoids headless DBus daemon traps.
+    /// Handles broken/isolated PATH environments and enforces proper desktop styling (QT_QPA_PLATFORMTHEME=kde).
     /// </summary>
     public static class LinuxPathOpener
     {
@@ -28,8 +28,12 @@ namespace osu.Game.Utils
             string standardPath = "/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin";
             psi.Environment["PATH"] = $"{standardPath}:{currentPath}";
 
+            // Ensure Qt applications like Dolphin load the user's KDE theme from kdeglobals rather than default white
+            psi.Environment["QT_QPA_PLATFORMTHEME"] = "kde";
+
+            string preamble = $"export PATH=\"{standardPath}:$PATH\"\nexport QT_QPA_PLATFORMTHEME=\"kde\"\n";
             psi.ArgumentList.Add("-c");
-            psi.ArgumentList.Add($"export PATH=\"{standardPath}:$PATH\"\n{script}");
+            psi.ArgumentList.Add(preamble + script);
 
             return psi;
         }
@@ -65,18 +69,17 @@ namespace osu.Game.Utils
                 string escapedPath = fullPath.Replace("'", "'\\''");
 
                 // Check default file manager via xdg-mime first, then fall back through known managers and standard launchers.
-                // Notice: We avoid raw FileManager1 DBus call because headless background daemons (like nautilus --gapplication-service)
-                // can silently swallow the DBus call under other window managers (like Hyprland) without creating any window!
+                // Note: Dolphin requires QT_QPA_PLATFORMTHEME=kde to match the user's dark theme from kdeglobals instead of blinding white!
                 string script = $@"
 target='{escapedPath}'
 case ""$(xdg-mime query default inode/directory 2>/dev/null)"" in
-    *dolphin*) dolphin ""$target"" >/dev/null 2>&1 & exit 0 ;;
+    *dolphin*) env QT_QPA_PLATFORMTHEME=kde dolphin ""$target"" >/dev/null 2>&1 & exit 0 ;;
     *nautilus*) nautilus ""$target"" >/dev/null 2>&1 & exit 0 ;;
     *thunar*) thunar ""$target"" >/dev/null 2>&1 & exit 0 ;;
     *nemo*) nemo ""$target"" >/dev/null 2>&1 & exit 0 ;;
     *pcmanfm*) pcmanfm ""$target"" >/dev/null 2>&1 & exit 0 ;;
 esac
-dolphin ""$target"" >/dev/null 2>&1 & exit 0 || nautilus ""$target"" >/dev/null 2>&1 & exit 0 || thunar ""$target"" >/dev/null 2>&1 & exit 0 || nemo ""$target"" >/dev/null 2>&1 & exit 0 || pcmanfm ""$target"" >/dev/null 2>&1 & exit 0 || gio open ""$target"" >/dev/null 2>&1 & exit 0 || xdg-open ""$target"" >/dev/null 2>&1 &
+env QT_QPA_PLATFORMTHEME=kde dolphin ""$target"" >/dev/null 2>&1 & exit 0 || nautilus ""$target"" >/dev/null 2>&1 & exit 0 || thunar ""$target"" >/dev/null 2>&1 & exit 0 || nemo ""$target"" >/dev/null 2>&1 & exit 0 || pcmanfm ""$target"" >/dev/null 2>&1 & exit 0 || gio open ""$target"" >/dev/null 2>&1 & exit 0 || xdg-open ""$target"" >/dev/null 2>&1 &
 ";
 
                 var psi = createShellProcessInfo(script);
@@ -118,13 +121,13 @@ dolphin ""$target"" >/dev/null 2>&1 & exit 0 || nautilus ""$target"" >/dev/null 
 target='{escapedPath}'
 parent='{escapedParent}'
 case ""$(xdg-mime query default inode/directory 2>/dev/null)"" in
-    *dolphin*) dolphin --select ""$target"" >/dev/null 2>&1 & exit 0 ;;
+    *dolphin*) env QT_QPA_PLATFORMTHEME=kde dolphin --select ""$target"" >/dev/null 2>&1 & exit 0 ;;
     *nautilus*) nautilus --select ""$target"" >/dev/null 2>&1 & exit 0 ;;
     *nemo*) nemo --no-desktop ""$target"" >/dev/null 2>&1 & exit 0 ;;
     *thunar*) thunar ""$parent"" >/dev/null 2>&1 & exit 0 ;;
     *pcmanfm*) pcmanfm ""$parent"" >/dev/null 2>&1 & exit 0 ;;
 esac
-dolphin --select ""$target"" >/dev/null 2>&1 & exit 0 || nautilus --select ""$target"" >/dev/null 2>&1 & exit 0 || nemo --no-desktop ""$target"" >/dev/null 2>&1 & exit 0 || thunar ""$parent"" >/dev/null 2>&1 & exit 0 || pcmanfm ""$parent"" >/dev/null 2>&1 & exit 0 || gio open ""$parent"" >/dev/null 2>&1 & exit 0 || xdg-open ""$parent"" >/dev/null 2>&1 &
+env QT_QPA_PLATFORMTHEME=kde dolphin --select ""$target"" >/dev/null 2>&1 & exit 0 || nautilus --select ""$target"" >/dev/null 2>&1 & exit 0 || nemo --no-desktop ""$target"" >/dev/null 2>&1 & exit 0 || thunar ""$parent"" >/dev/null 2>&1 & exit 0 || pcmanfm ""$parent"" >/dev/null 2>&1 & exit 0 || gio open ""$parent"" >/dev/null 2>&1 & exit 0 || xdg-open ""$parent"" >/dev/null 2>&1 &
 ";
 
                 var psi = createShellProcessInfo(script);
