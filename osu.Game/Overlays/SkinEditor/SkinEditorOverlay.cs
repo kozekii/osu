@@ -20,14 +20,18 @@ using osu.Game.Beatmaps;
 using osu.Game.Configuration;
 using osu.Game.Graphics.Containers;
 using osu.Game.Input.Bindings;
+using osu.Game.Online.API;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Mods;
+using osu.Game.Rulesets.Scoring;
 using osu.Game.Scoring;
 using osu.Game.Screens;
 using osu.Game.Screens.Edit;
 using osu.Game.Screens.Edit.Components;
 using osu.Game.Screens.Menu;
 using osu.Game.Screens.Play;
+using osu.Game.Screens.Ranking;
+using osu.Game.Screens.RankingV2;
 using osu.Game.Screens.Select;
 using osu.Game.Users;
 using osu.Game.Utils;
@@ -72,6 +76,9 @@ namespace osu.Game.Overlays.SkinEditor
 
         [Resolved]
         private IBindable<WorkingBeatmap> beatmap { get; set; } = null!;
+
+        [Resolved]
+        private IAPIProvider api { get; set; } = null!;
 
         private OsuScreen? lastTargetScreen;
         private InvokeOnDisposal? nestedInputManagerDisable;
@@ -127,6 +134,8 @@ namespace osu.Game.Overlays.SkinEditor
 
                 if (lastTargetScreen is MainMenu)
                     PresentGameplay();
+                else if (lastTargetScreen is ResultsScreen)
+                    PresentResults();
 
                 return;
             }
@@ -146,6 +155,8 @@ namespace osu.Game.Overlays.SkinEditor
 
                 if (lastTargetScreen is MainMenu)
                     PresentGameplay();
+                else if (lastTargetScreen is ResultsScreen)
+                    PresentResults();
 
                 Debug.Assert(lastTargetScreen != null);
 
@@ -210,6 +221,130 @@ namespace osu.Game.Overlays.SkinEditor
                 if (replayGeneratingMod != null)
                     screen.Push(new EndlessPlayer(replayGeneratingMod.CreateScoreFromReplayData));
             }, new[] { typeof(Player), typeof(SoloSongSelect) });
+        }
+
+        public void PresentResults() => presentResults(false);
+
+        private void presentResults(bool attemptedBeatmapSwitch)
+        {
+            performer?.PerformFromScreen(screen =>
+            {
+                if (State.Value != Visibility.Visible)
+                    return;
+
+                if (beatmap.Value is DummyWorkingBeatmap)
+                    return;
+
+                if (beatmap.Value.BeatmapSetInfo.Protected)
+                {
+                    if (!attemptedBeatmapSwitch)
+                    {
+                        music.NextTrack();
+                        Schedule(() => presentResults(true));
+                    }
+
+                    return;
+                }
+
+                if (screen is SoloResultsScreenV2)
+                    return;
+
+                if (screen is ResultsScreen legacyResults && legacyResults.Score != null)
+                {
+                    screen.Push(new SoloResultsScreenV2(legacyResults.Score)
+                    {
+                        AnimateOnEnter = false,
+                    });
+                    return;
+                }
+
+                if (screen is not SoloSongSelect)
+                    ruleset.Value = beatmap.Value.BeatmapInfo.Ruleset;
+
+                screen.Push(new SoloResultsScreenV2(createSampleScore())
+                {
+                    AnimateOnEnter = false,
+                });
+            }, new[] { typeof(SoloResultsScreenV2), typeof(ResultsScreen), typeof(SoloSongSelect) });
+        }
+
+        private ScoreInfo createSampleScore()
+        {
+            var rulesetInstance = ruleset.Value.CreateInstance();
+            var usableMods = mods.Value.Where(m => m.Type != ModType.Automation).ToArray();
+
+            var statistics = new Dictionary<HitResult, int>();
+            var maximumStatistics = new Dictionary<HitResult, int>();
+
+            foreach ((HitResult result, _) in rulesetInstance.GetHitResultsForDisplay())
+            {
+                switch (result)
+                {
+                    case HitResult.Perfect:
+                        statistics[result] = 320;
+                        break;
+
+                    case HitResult.Great:
+                        statistics[result] = 640;
+                        break;
+
+                    case HitResult.Good:
+                    case HitResult.LargeTickHit:
+                        statistics[result] = 24;
+                        if (result == HitResult.LargeTickHit)
+                            maximumStatistics[result] = 25;
+                        break;
+
+                    case HitResult.Ok:
+                    case HitResult.SmallTickHit:
+                        statistics[result] = 8;
+                        if (result == HitResult.SmallTickHit)
+                            maximumStatistics[result] = 8;
+                        break;
+
+                    case HitResult.Meh:
+                    case HitResult.SliderTailHit:
+                        statistics[result] = 2;
+                        if (result == HitResult.SliderTailHit)
+                            maximumStatistics[result] = 2;
+                        break;
+
+                    case HitResult.Miss:
+                        statistics[result] = 0;
+                        break;
+
+                    case HitResult.LargeBonus:
+                    case HitResult.SmallBonus:
+                        statistics[result] = 12;
+                        break;
+                }
+            }
+
+            var sampleScore = new ScoreInfo(beatmap.Value.BeatmapInfo, ruleset.Value)
+            {
+                User = api.LocalUser.Value,
+                Mods = usableMods,
+                Date = DateTimeOffset.Now,
+                TotalScore = 964_850,
+                MaxCombo = 727,
+                Accuracy = 0.9865,
+                Rank = ScoreRank.S,
+                PP = 428.5,
+                Position = 1,
+                Statistics = statistics,
+                MaximumStatistics = maximumStatistics,
+            };
+
+            double length = Math.Max(60_000, beatmap.Value.BeatmapInfo.Length);
+
+            for (int i = 0; i < 200; i++)
+            {
+                double progress = i / 199.0;
+                double health = Math.Clamp(0.85 + 0.15 * Math.Cos(progress * Math.PI * 3.5) - 0.25 * Math.Exp(-Math.Pow((progress - 0.55) / 0.12, 2)), 0.15, 1.0);
+                sampleScore.HealthGraph.Add(new HealthValue(progress * length, health));
+            }
+
+            return sampleScore;
         }
 
         protected override void Update()
@@ -300,6 +435,9 @@ namespace osu.Game.Overlays.SkinEditor
 
             if (skinEditor.State.Value == Visibility.Visible)
             {
+                if (target is SoloResultsScreenV2 resultsV2)
+                    resultsV2.FinishAnimating();
+
                 if (externalEditOverlay.State.Value != Visibility.Visible)
                     skinEditor.Save(false);
                 skinEditor.UpdateTargetScreen(target);

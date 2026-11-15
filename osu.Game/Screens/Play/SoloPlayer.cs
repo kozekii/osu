@@ -14,6 +14,7 @@ using osu.Game.Online.Rooms;
 using osu.Game.Online.Solo;
 using osu.Game.Scoring;
 using osu.Game.Screens.Play.Leaderboards;
+using osu.Game.Screens.RankingV2;
 
 namespace osu.Game.Screens.Play
 {
@@ -61,5 +62,11 @@ namespace osu.Game.Screens.Play
 
             return new SubmitSoloScoreRequest(score.ScoreInfo, token, beatmap.OnlineID);
         }
+
+        protected override OsuScreen CreateResultsScreen(ScoreInfo score) => new SoloResultsScreenV2(score)
+        {
+            AllowRetry = true,
+            IsLocalPlay = true,
+        };
     }
 }

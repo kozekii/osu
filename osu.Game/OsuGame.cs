@@ -936,7 +936,7 @@ namespace osu.Game
                         break;
 
                     case ScorePresentType.Results:
-                        screen.Push(new SoloResultsScreen(databasedScore.ScoreInfo));
+                        screen.Push(new Screens.RankingV2.SoloResultsScreenV2(databasedScore.ScoreInfo));
                         break;
                 }
             }, validScreens: validScreens);

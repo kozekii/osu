@@ -24,7 +24,7 @@ namespace osu.Game.Screens.RankingV2.Legacy
         public override bool ReceivePositionalInputAt(Vector2 screenSpacePos) => true;
 
         [BackgroundDependencyLoader]
-        private void load(IBindable<IScoreInfo> _)
+        private void load(IBindable<IScoreInfo> _, IResultsScreenV2? results)
         {
             // just a dummy BDL that requires `IBindable<IScoreInfo>`
             // this is done so that this component doesn't show up on other skinnable screens
@@ -36,7 +36,7 @@ namespace osu.Game.Screens.RankingV2.Legacy
                 AccentColour = Colour4.BlueViolet,
                 Text = ResultsScreenStrings.LegacyOnlineRankingButtonText,
                 Size = new Vector2(200, 30) * LegacySkin.STABLE_MAGIC_SCALE_FACTOR,
-                Action = () => { },
+                Action = () => results?.PresentExtendedStatistics?.Invoke(),
             };
         }
 

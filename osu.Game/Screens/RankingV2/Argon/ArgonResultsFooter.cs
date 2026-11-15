@@ -36,8 +36,11 @@ namespace osu.Game.Screens.RankingV2.Argon
         [Resolved]
         private OsuColour colours { get; set; } = null!;
 
+        [Resolved]
+        private IResultsScreenV2 results { get; set; } = null!;
+
         [BackgroundDependencyLoader]
-        private void load(IResultsScreenV2 results, SkinEditor? skinEditor)
+        private void load(SkinEditor? skinEditor)
         {
             Anchor = Anchor.BottomCentre;
             Origin = Anchor.BottomCentre;
@@ -72,47 +75,54 @@ namespace osu.Game.Screens.RankingV2.Argon
             {
                 Icon = OsuIcon.Ranking,
                 Text = ResultsScreenStrings.RankingFooterButtonText,
-                Action = () => { },
+                Action = () => results.PresentRanking?.Invoke(),
                 AccentColour = colours.Green1, // to match web ranking pages
             },
             new ScreenFooterButton
             {
                 Icon = OsuIcon.Information,
                 Text = ResultsScreenStrings.MoreStatisticsFooterButtonText,
-                Action = () => { },
+                Action = () => results.PresentExtendedStatistics?.Invoke(),
                 AccentColour = colours.Blue1, // to match web score pages
             },
             new ScreenFooterButton
             {
                 Icon = OsuIcon.Folder,
                 Text = ResultsScreenStrings.CatalogueFooterButtonText,
-                Action = () => { },
+                Action = () => results.PresentBeatmap?.Invoke(),
                 AccentColour = colours.Blue1, // to match web beatmap pages
             },
         ];
 
-        private IEnumerable<ShearedButton> createRightButtons() =>
-        [
+        private IEnumerable<ShearedButton> createRightButtons()
+        {
             // button widths mostly arbitrary, but chosen to ensure no overflows at 4:3 aspect ratio
-            new ShearedButtonWithIcon
+            if (results.WatchReplay != null)
             {
-                Width = 150,
-                Text = ResultsScreenStrings.WatchReplayFooterButtonText,
-                Icon = OsuIcon.Reel,
-                Action = () => { },
-                DarkerColour = colours.Lime3,
-                LighterColour = colours.Lime1,
-            },
-            new ShearedButtonWithIcon
-            {
-                Width = 150,
-                Text = ResultsScreenStrings.PlayAgainFooterButtonText,
-                Icon = OsuIcon.ArrowCycle,
-                Action = () => { },
-                DarkerColour = colours.Blue3,
-                LighterColour = colours.Blue1,
+                yield return new ShearedButtonWithIcon
+                {
+                    Width = 150,
+                    Text = ResultsScreenStrings.WatchReplayFooterButtonText,
+                    Icon = OsuIcon.Reel,
+                    Action = () => results.WatchReplay?.Invoke(),
+                    DarkerColour = colours.Lime3,
+                    LighterColour = colours.Lime1,
+                };
             }
-        ];
+
+            if (results.Retry != null)
+            {
+                yield return new ShearedButtonWithIcon
+                {
+                    Width = 150,
+                    Text = ResultsScreenStrings.PlayAgainFooterButtonText,
+                    Icon = OsuIcon.ArrowCycle,
+                    Action = () => results.Retry?.Invoke(),
+                    DarkerColour = colours.Blue3,
+                    LighterColour = colours.Blue1,
+                };
+            }
+        }
 
         protected override void Dispose(bool isDisposing)
         {

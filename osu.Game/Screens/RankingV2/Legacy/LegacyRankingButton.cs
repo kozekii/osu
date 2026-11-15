@@ -95,6 +95,12 @@ namespace osu.Game.Screens.RankingV2.Legacy
             : base(@"ranking-retry", @"pause-retry")
         {
         }
+
+        [BackgroundDependencyLoader]
+        private void load(IResultsScreenV2? results)
+        {
+            Action = () => results?.Retry?.Invoke();
+        }
     }
 
     public partial class LegacyRankingWatchReplayButton : LegacyRankingButton
@@ -103,6 +109,12 @@ namespace osu.Game.Screens.RankingV2.Legacy
         public LegacyRankingWatchReplayButton()
             : base(@"ranking-replay", @"pause-replay")
         {
+        }
+
+        [BackgroundDependencyLoader]
+        private void load(IResultsScreenV2? results)
+        {
+            Action = () => results?.WatchReplay?.Invoke();
         }
     }
 }

@@ -904,7 +904,7 @@ namespace osu.Game.Screens.Play
                     return;
 
                 OnShowingResults?.Invoke();
-                this.Push(CreateResults(prepareScoreForDisplayTask.GetResultSafely()));
+                this.Push(CreateResultsScreen(prepareScoreForDisplayTask.GetResultSafely()));
             }, Time.Current + delay, 50);
 
             Scheduler.Add(resultsDisplayDelegate);
@@ -1298,6 +1298,11 @@ namespace osu.Game.Screens.Play
         /// <param name="score">The <see cref="ScoreInfo"/> to be displayed in the results screen.</param>
         /// <returns>The <see cref="ResultsScreen"/>.</returns>
         protected abstract ResultsScreen CreateResults(ScoreInfo score);
+
+        /// <summary>
+        /// Creates the results screen to be pushed when gameplay completes.
+        /// </summary>
+        protected virtual OsuScreen CreateResultsScreen(ScoreInfo score) => CreateResults(score);
 
         private void fadeOut()
         {

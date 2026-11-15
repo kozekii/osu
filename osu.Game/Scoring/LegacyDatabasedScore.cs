@@ -29,7 +29,11 @@ namespace osu.Game.Scoring
                 if (stream == null)
                     return;
 
-                Replay = new DatabasedLegacyScoreDecoder(rulesets, beatmaps).Parse(stream).Replay;
+                var parsed = new DatabasedLegacyScoreDecoder(rulesets, beatmaps).Parse(stream);
+                Replay = parsed.Replay;
+
+                if (score.HealthGraph.Count == 0 && parsed.ScoreInfo.HealthGraph.Count > 0)
+                    score.HealthGraph = parsed.ScoreInfo.HealthGraph;
             }
         }
     }
