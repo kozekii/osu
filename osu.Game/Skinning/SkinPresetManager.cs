@@ -19,6 +19,7 @@ namespace osu.Game.Skinning
     public class SkinPresetManager
     {
         private const string preset_filename = "skin-presets.json";
+        private const string preset_backup_filename = "skin-presets.backup.json";
 
         public BindableList<SkinPreset> Presets { get; } = new BindableList<SkinPreset>();
 
@@ -46,6 +47,9 @@ namespace osu.Game.Skinning
                 if (!storage.Exists(preset_filename))
                     return;
 
+                bool migrated = false;
+                bool hasUnsupportedPreset = false;
+
                 using (var stream = storage.GetStream(preset_filename, FileAccess.Read, FileMode.Open))
                 using (var reader = new StreamReader(stream))
                 {
@@ -56,15 +60,76 @@ namespace osu.Game.Skinning
                     {
                         foreach (var preset in list)
                         {
-                            if (preset != null && !string.IsNullOrWhiteSpace(preset.Name))
-                                Presets.Add(preset);
+                            if (preset == null || string.IsNullOrWhiteSpace(preset.Name))
+                                continue;
+
+                            if (preset.SchemaVersion > SkinPreset.CURRENT_SCHEMA_VERSION)
+                            {
+                                // Written by a newer build. Skipping is lossless as long as we don't
+                                // save over the original file, which is backed up below.
+                                Logger.Log($"Skipping skin preset '{preset.Name}' with unsupported schema version {preset.SchemaVersion}.");
+                                hasUnsupportedPreset = true;
+                                continue;
+                            }
+
+                            if (migratePreset(preset))
+                                migrated = true;
+
+                            Presets.Add(preset);
                         }
                     }
                 }
+
+                if (hasUnsupportedPreset)
+                    backupPresetFile();
+
+                if (migrated)
+                    savePresets();
             }
             catch (Exception ex)
             {
                 Logger.Log($"Failed to load skin presets: {ex.Message}", level: LogLevel.Error);
+            }
+        }
+
+        /// <summary>
+        /// Brings a preset loaded from an older file up to <see cref="SkinPreset.CURRENT_SCHEMA_VERSION"/>.
+        /// Returns whether anything changed and therefore needs writing back.
+        /// </summary>
+        private static bool migratePreset(SkinPreset preset)
+        {
+            bool changed = false;
+
+            if (preset.SchemaVersion < 1)
+            {
+                preset.SchemaVersion = 1;
+                changed = true;
+            }
+
+            if (preset.SchemaVersion < 2)
+            {
+                // Before schema 2, CreatedAt doubled as the last-captured timestamp.
+                preset.LastSavedAt ??= preset.CreatedAt;
+                preset.SchemaVersion = 2;
+                changed = true;
+            }
+
+            return changed;
+        }
+
+        private void backupPresetFile()
+        {
+            try
+            {
+                using (var source = storage.GetStream(preset_filename, FileAccess.Read, FileMode.Open))
+                using (var destination = storage.GetStream(preset_backup_filename, FileAccess.Write, FileMode.Create))
+                    source.CopyTo(destination);
+
+                Logger.Log($"Skin presets written by a newer build were preserved in {preset_backup_filename}.");
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"Failed to back up skin presets: {ex.Message}", level: LogLevel.Error);
             }
         }
 
@@ -87,28 +152,47 @@ namespace osu.Game.Skinning
 
         public SkinPreset CreatePresetFromCurrent(string name)
         {
-            var currentSkin = skins.CurrentSkinInfo.Value;
-            var currentHitsound = skins.CurrentHitsoundSkinInfo.Value;
-            var currentCursor = skins.CurrentCursorSkinInfo.Value;
-
             var preset = new SkinPreset
             {
                 Id = Guid.NewGuid(),
                 Name = name.Trim(),
-                SkinId = currentSkin?.ID ?? SkinInfo.ARGON_SKIN,
-                SkinName = currentSkin?.ToString() ?? string.Empty,
-                HitsoundSkinId = currentHitsound?.ID,
-                HitsoundSkinName = currentHitsound?.ToString() ?? string.Empty,
-                CursorSkinId = currentCursor?.ID,
-                CursorSkinName = currentCursor?.ToString() ?? string.Empty,
-                GameplayCursorSize = config.Get<float>(OsuSetting.GameplayCursorSize),
-                MenuCursorSize = config.Get<float>(OsuSetting.MenuCursorSize),
-                CursorRotation = config.Get<bool>(OsuSetting.CursorRotation),
-                AutoCursorSize = config.Get<bool>(OsuSetting.AutoCursorSize),
-                CreatedAt = DateTimeOffset.UtcNow
             };
 
+            captureCurrentInto(preset);
+            return preset;
+        }
+
+        /// <summary>
+        /// Captures the current skin, auxiliary (hitsound/cursor) skins, cursor settings and the full
+        /// skin-editor layout snapshot into the supplied preset. Does not touch <see cref="SkinPreset.Id"/> or Name.
+        /// </summary>
+        private void captureCurrentInto(SkinPreset target)
+        {
+            var currentSkin = skins.CurrentSkinInfo.Value;
+            var currentHitsound = skins.CurrentHitsoundSkinInfo.Value;
+            var currentCursor = skins.CurrentCursorSkinInfo.Value;
+
+            target.SkinId = currentSkin?.ID ?? SkinInfo.ARGON_SKIN;
+            target.SkinName = currentSkin?.ToString() ?? string.Empty;
+            target.HitsoundSkinId = currentHitsound?.ID;
+            target.HitsoundSkinName = currentHitsound?.ToString() ?? string.Empty;
+            target.CursorSkinId = currentCursor?.ID;
+            target.CursorSkinName = currentCursor?.ToString() ?? string.Empty;
+            target.GameplayCursorSize = config.Get<float>(OsuSetting.GameplayCursorSize);
+            target.MenuCursorSize = config.Get<float>(OsuSetting.MenuCursorSize);
+            target.CursorRotation = config.Get<bool>(OsuSetting.CursorRotation);
+            target.AutoCursorSize = config.Get<bool>(OsuSetting.AutoCursorSize);
+
+            var now = DateTimeOffset.UtcNow;
+            target.LastSavedAt = now;
+
+            if (target.CreatedAt == default)
+                target.CreatedAt = now;
+
+            target.SchemaVersion = SkinPreset.CURRENT_SCHEMA_VERSION;
+
             // Capture full skin editor layout customizations (characters, text, counters, HUD, etc.)
+            target.LayoutsJson.Clear();
             var skinInstance = skins.CurrentSkin.Value;
             if (skinInstance != null)
             {
@@ -117,7 +201,7 @@ namespace osu.Game.Skinning
                     try
                     {
                         string json = JsonConvert.SerializeObject(kvp.Value, new JsonSerializerSettings { Formatting = Formatting.Indented });
-                        preset.LayoutsJson[kvp.Key.ToString()] = json;
+                        target.LayoutsJson[kvp.Key.ToString()] = json;
                     }
                     catch (Exception ex)
                     {
@@ -125,8 +209,6 @@ namespace osu.Game.Skinning
                     }
                 }
             }
-
-            return preset;
         }
 
         public void SavePreset(string name)
@@ -139,40 +221,7 @@ namespace osu.Game.Skinning
 
             if (existing != null)
             {
-                var currentSkin = skins.CurrentSkinInfo.Value;
-                var currentHitsound = skins.CurrentHitsoundSkinInfo.Value;
-                var currentCursor = skins.CurrentCursorSkinInfo.Value;
-
-                existing.SkinId = currentSkin?.ID ?? SkinInfo.ARGON_SKIN;
-                existing.SkinName = currentSkin?.ToString() ?? string.Empty;
-                existing.HitsoundSkinId = currentHitsound?.ID;
-                existing.HitsoundSkinName = currentHitsound?.ToString() ?? string.Empty;
-                existing.CursorSkinId = currentCursor?.ID;
-                existing.CursorSkinName = currentCursor?.ToString() ?? string.Empty;
-                existing.GameplayCursorSize = config.Get<float>(OsuSetting.GameplayCursorSize);
-                existing.MenuCursorSize = config.Get<float>(OsuSetting.MenuCursorSize);
-                existing.CursorRotation = config.Get<bool>(OsuSetting.CursorRotation);
-                existing.AutoCursorSize = config.Get<bool>(OsuSetting.AutoCursorSize);
-                existing.CreatedAt = DateTimeOffset.UtcNow;
-
-                existing.LayoutsJson.Clear();
-                var skinInstance = skins.CurrentSkin.Value;
-                if (skinInstance != null)
-                {
-                    foreach (var kvp in skinInstance.LayoutInfos)
-                    {
-                        try
-                        {
-                            string json = JsonConvert.SerializeObject(kvp.Value, new JsonSerializerSettings { Formatting = Formatting.Indented });
-                            existing.LayoutsJson[kvp.Key.ToString()] = json;
-                        }
-                        catch (Exception ex)
-                        {
-                            Logger.Log($"Failed to serialize layout for {kvp.Key}: {ex.Message}", level: LogLevel.Error);
-                        }
-                    }
-                }
-
+                captureCurrentInto(existing);
                 savePresets();
                 CurrentPreset.Value = existing;
             }
@@ -185,6 +234,25 @@ namespace osu.Game.Skinning
             }
         }
 
+        /// <summary>
+        /// Always creates a brand new preset, guaranteeing a unique name. Never overwrites an existing preset.
+        /// </summary>
+        public SkinPreset SaveNewPreset(string name)
+        {
+            string baseName = string.IsNullOrWhiteSpace(name) ? "Preset" : name.Trim();
+
+            string uniqueName = baseName;
+            int suffix = 2;
+            while (Presets.Any(p => string.Equals(p.Name, uniqueName, StringComparison.OrdinalIgnoreCase)))
+                uniqueName = $"{baseName} ({suffix++})";
+
+            var preset = CreatePresetFromCurrent(uniqueName);
+            Presets.Add(preset);
+            savePresets();
+            CurrentPreset.Value = preset;
+            return preset;
+        }
+
         public void OverwritePreset(SkinPreset preset)
         {
             if (preset == null)
@@ -194,40 +262,7 @@ namespace osu.Game.Skinning
             if (matching == null)
                 return;
 
-            var currentSkin = skins.CurrentSkinInfo.Value;
-            var currentHitsound = skins.CurrentHitsoundSkinInfo.Value;
-            var currentCursor = skins.CurrentCursorSkinInfo.Value;
-
-            matching.SkinId = currentSkin?.ID ?? SkinInfo.ARGON_SKIN;
-            matching.SkinName = currentSkin?.ToString() ?? string.Empty;
-            matching.HitsoundSkinId = currentHitsound?.ID;
-            matching.HitsoundSkinName = currentHitsound?.ToString() ?? string.Empty;
-            matching.CursorSkinId = currentCursor?.ID;
-            matching.CursorSkinName = currentCursor?.ToString() ?? string.Empty;
-            matching.GameplayCursorSize = config.Get<float>(OsuSetting.GameplayCursorSize);
-            matching.MenuCursorSize = config.Get<float>(OsuSetting.MenuCursorSize);
-            matching.CursorRotation = config.Get<bool>(OsuSetting.CursorRotation);
-            matching.AutoCursorSize = config.Get<bool>(OsuSetting.AutoCursorSize);
-            matching.CreatedAt = DateTimeOffset.UtcNow;
-
-            matching.LayoutsJson.Clear();
-            var skinInstance = skins.CurrentSkin.Value;
-            if (skinInstance != null)
-            {
-                foreach (var kvp in skinInstance.LayoutInfos)
-                {
-                    try
-                    {
-                        string json = JsonConvert.SerializeObject(kvp.Value, new JsonSerializerSettings { Formatting = Formatting.Indented });
-                        matching.LayoutsJson[kvp.Key.ToString()] = json;
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Log($"Failed to serialize layout for {kvp.Key}: {ex.Message}", level: LogLevel.Error);
-                    }
-                }
-            }
-
+            captureCurrentInto(matching);
             savePresets();
             CurrentPreset.Value = matching;
         }
@@ -276,42 +311,24 @@ namespace osu.Game.Skinning
             if (preset == null)
                 return;
 
-            // Apply visual skin
+            // Apply visual skin.
             var targetSkin = skins.GetAllUsableSkins().FirstOrDefault(s => s.ID == preset.SkinId);
-            if (targetSkin != null)
-            {
-                if (skins.CurrentSkinInfo.Value?.ID != targetSkin.ID)
-                    skins.CurrentSkinInfo.Value = targetSkin;
-            }
+            bool switchingSkin = targetSkin != null && skins.CurrentSkinInfo.Value?.ID != targetSkin.ID;
 
-            // Apply layout customizations (characters, text, HUD components, etc.)
+            if (switchingSkin)
+                skins.CurrentSkinInfo.Value = targetSkin!;
+
+            // Layout customizations (characters, text, HUD components, etc.) are captured from a specific
+            // skin and must be written back to that same skin instance. When a skin switch is required,
+            // CurrentSkin.Value is only updated asynchronously, so defer the layout write until it lands -
+            // otherwise we clobber the previously-active skin instance's in-memory layout and persist that
+            // corruption to disk via SkinManager.Save().
             if (preset.LayoutsJson != null && preset.LayoutsJson.Count > 0)
             {
-                var activeSkin = skins.CurrentSkin.Value;
-                if (activeSkin != null)
-                {
-                    activeSkin.LayoutInfos.Clear();
-
-                    foreach (var kvp in preset.LayoutsJson)
-                    {
-                        if (Enum.TryParse<GlobalSkinnableContainers>(kvp.Key, out var container))
-                        {
-                            try
-                            {
-                                var layoutInfo = JsonConvert.DeserializeObject<SkinLayoutInfo>(kvp.Value);
-                                if (layoutInfo != null)
-                                    activeSkin.LayoutInfos[container] = layoutInfo;
-                            }
-                            catch (Exception ex)
-                            {
-                                Logger.Log($"Failed to deserialize layout for {kvp.Key}: {ex.Message}", level: LogLevel.Error);
-                            }
-                        }
-                    }
-
-                    skins.Save(activeSkin);
-                    skins.CurrentSkin.TriggerChange();
-                }
+                if (switchingSkin)
+                    applyLayoutsAfterSkinSwitch(preset);
+                else
+                    applyLayouts(preset);
             }
 
             // Apply hitsound skin
@@ -350,6 +367,60 @@ namespace osu.Game.Skinning
                 config.SetValue(OsuSetting.AutoCursorSize, preset.AutoCursorSize.Value);
 
             CurrentPreset.Value = preset;
+        }
+
+        private void applyLayouts(SkinPreset preset)
+        {
+            var activeSkin = skins.CurrentSkin.Value;
+
+            // Guard: only write to the skin instance this preset was captured from.
+            if (activeSkin == null || activeSkin.SkinInfo?.ID != preset.SkinId)
+                return;
+
+            activeSkin.LayoutInfos.Clear();
+
+            foreach (var kvp in preset.LayoutsJson)
+            {
+                if (Enum.TryParse<GlobalSkinnableContainers>(kvp.Key, out var container))
+                {
+                    try
+                    {
+                        var layoutInfo = JsonConvert.DeserializeObject<SkinLayoutInfo>(kvp.Value);
+                        if (layoutInfo != null)
+                            activeSkin.LayoutInfos[container] = layoutInfo;
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Log($"Failed to deserialize layout for {kvp.Key}: {ex.Message}", level: LogLevel.Error);
+                    }
+                }
+            }
+
+            skins.Save(activeSkin);
+            skins.CurrentSkin.TriggerChange();
+        }
+
+        private void applyLayoutsAfterSkinSwitch(SkinPreset preset)
+        {
+            // If the target instance is somehow already active, apply immediately.
+            if (skins.CurrentSkin.Value?.SkinInfo?.ID == preset.SkinId)
+            {
+                applyLayouts(preset);
+                return;
+            }
+
+            // CurrentSkin.Value updates asynchronously after CurrentSkinInfo changes; wait for the target
+            // skin instance before writing layouts so we mutate the correct skin.
+            void onSkinChanged(ValueChangedEvent<Skin> e)
+            {
+                if (e.NewValue?.SkinInfo?.ID != preset.SkinId)
+                    return;
+
+                skins.CurrentSkin.ValueChanged -= onSkinChanged;
+                applyLayouts(preset);
+            }
+
+            skins.CurrentSkin.ValueChanged += onSkinChanged;
         }
     }
 }

@@ -87,15 +87,6 @@ namespace osu.Game.Skinning.Components
         [Resolved(canBeNull: true)]
         private ScoreProcessor? scoreProcessor { get; set; }
 
-        [Resolved(canBeNull: true)]
-        private HealthProcessor? healthProcessor { get; set; }
-
-        [Resolved(canBeNull: true)]
-        private IGameplayClock? gameplayClock { get; set; }
-
-        [Resolved(canBeNull: true)]
-        private GameplayUnderlayContainer? underlayContainer { get; set; }
-
         private Container contentContainer = null!;
         private Drawable? activeVisual;
         private int lastMilestoneCombo;
@@ -174,16 +165,27 @@ namespace osu.Game.Skinning.Components
             // 2. Multi-source Frame Sequence Search
             var discoveredTextures = new List<Texture>();
 
-            for (int i = 0; i < 60; i++)
+            const int max_frames = 60;
+            // Allow the sequence to start at index 0-3 so 1-based skins (chara-1..chara-8) are discovered too.
+            const int max_start_attempts = 4;
+
+            bool hasDistinctCleanName = !string.Equals(cleanName, basePrefix, StringComparison.OrdinalIgnoreCase);
+
+            for (int i = 0; i < max_frames; i++)
             {
                 Texture? tex = fetchTexture($"{basePrefix}-{i}")
-                               ?? fetchTexture($"{basePrefix}_{i}")
-                               ?? fetchTexture($"{cleanName}-{i}")
-                               ?? fetchTexture($"{cleanName}_{i}");
+                               ?? fetchTexture($"{basePrefix}_{i}");
+
+                if (tex == null && hasDistinctCleanName)
+                    tex = fetchTexture($"{cleanName}-{i}") ?? fetchTexture($"{cleanName}_{i}");
 
                 if (tex != null)
                     discoveredTextures.Add(tex);
-                else if (i > 0)
+                else if (discoveredTextures.Count > 0)
+                    // First gap after the sequence has started marks its end.
+                    break;
+                else if (i >= max_start_attempts)
+                    // Nothing found at the start of the search window; abandon the sequence path.
                     break;
             }
 
@@ -233,16 +235,12 @@ namespace osu.Game.Skinning.Components
 
             Texture? tex = null;
 
+            // ISkinSource.GetTexture already walks every source (and the parent chain) in priority order.
+            // Probing AllSources manually here just multiplies the lookup count for every frame.
             if (skinSource != null)
             {
                 tex = skinSource.GetTexture(clean) ?? skinSource.GetTexture(name);
                 if (tex != null) return tex;
-
-                foreach (var s in skinSource.AllSources)
-                {
-                    tex = s.GetTexture(clean) ?? s.GetTexture(name);
-                    if (tex != null) return tex;
-                }
             }
 
             var currentSkin = skinManager?.CurrentSkin.Value;

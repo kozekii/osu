@@ -304,8 +304,8 @@ namespace osu.Game.Overlays.SkinEditor
                 {
                     Save(false);
                     string skinName = currentSkin.Value?.SkinInfo?.Value?.Name ?? "Preset";
-                    presetManager.SavePreset(skinName);
-                    onScreenDisplay?.Display(new SkinPresetToast("Preset saved", skinName));
+                    var saved = presetManager.SaveNewPreset(skinName);
+                    onScreenDisplay?.Display(new SkinPresetToast("Preset saved", saved.Name));
                 }),
             };
 
@@ -798,32 +798,44 @@ namespace osu.Game.Overlays.SkinEditor
             if (itemsToMove.Length == 0)
                 return;
 
-            var screenSpaceQuads = itemsToMove.Select(item => ((Drawable)item).ScreenSpaceDrawQuad).ToArray();
+            changeHandler?.BeginChange();
 
-            foreach (var item in itemsToMove)
-                currentContainer.Remove(item, false);
-
-            for (int i = 0; i < itemsToMove.Length; i++)
+            try
             {
-                var item = itemsToMove[i];
-                var drawable = (Drawable)item;
+                var screenSpaceQuads = itemsToMove.Select(item => ((Drawable)item).ScreenSpaceDrawQuad).ToArray();
 
-                try
-                {
-                    targetContainer.Add(item);
+                foreach (var item in itemsToMove)
+                    currentContainer.Remove(item, false);
 
-                    Vector2 screenCenter = screenSpaceQuads[i].Centre;
-                    Vector2 targetCenterInLocal = targetContainer.ToLocalSpace(screenCenter);
-                    drawable.Position = targetCenterInLocal - targetContainer.DrawSize * 0.5f;
-                    SkinSelectionHandler.ApplyClosestAnchorOrigin(drawable);
-                }
-                catch
+                for (int i = 0; i < itemsToMove.Length; i++)
                 {
-                    // Fallback
+                    var item = itemsToMove[i];
+                    var drawable = (Drawable)item;
+
+                    try
+                    {
+                        targetContainer.Add(item);
+
+                        Vector2 screenCenter = screenSpaceQuads[i].Centre;
+                        Vector2 targetCenterInLocal = targetContainer.ToLocalSpace(screenCenter);
+                        drawable.Position = targetCenterInLocal - targetContainer.DrawSize * 0.5f;
+                        SkinSelectionHandler.ApplyClosestAnchorOrigin(drawable);
+                    }
+                    catch
+                    {
+                        // Placing into the target failed; restore the component to its original container
+                        // so it is never left parentless (which would drop it from the skin entirely).
+                        if (drawable.Parent == null)
+                            currentContainer.Add(item);
+                    }
                 }
+
+                selectedTarget.Value = targetLookup;
             }
-
-            selectedTarget.Value = targetLookup;
+            finally
+            {
+                changeHandler?.EndChange();
+            }
 
             Schedule(() =>
             {

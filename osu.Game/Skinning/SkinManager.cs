@@ -176,75 +176,26 @@ namespace osu.Game.Skinning
         /// Inserts the defaults first, then 'random skin', then custom ones.
         /// Returns a list of <see cref="Live{SkinInfo}"/> items.
         /// </summary>
-        public IList<Live<SkinInfo>> GetAllUsableSkins()
-        {
-            var skins = new List<Live<SkinInfo>>();
-
-            Realm.Run(realm =>
-            {
-                skins.Add(realm.Find<SkinInfo>(SkinInfo.ARGON_SKIN).ToLive(Realm));
-                skins.Add(realm.Find<SkinInfo>(SkinInfo.ARGON_PRO_SKIN).ToLive(Realm));
-                skins.Add(realm.Find<SkinInfo>(SkinInfo.TRIANGLES_SKIN).ToLive(Realm));
-                skins.Add(realm.Find<SkinInfo>(SkinInfo.CLASSIC_SKIN).ToLive(Realm));
-                skins.Add(realm.Find<SkinInfo>(SkinInfo.RETRO_SKIN).ToLive(Realm));
-
-                skins.Add(random_skin_info);
-
-                var userSkins = realm.All<SkinInfo>()
-                                     .Where(s => !s.DeletePending && !s.Protected)
-                                     .AsEnumerable()
-                                     .OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
-                                     .Select(s => s.ToLive(Realm));
-
-                foreach (var s in userSkins)
-                    skins.Add(s);
-            });
-
-            return skins;
-        }
+        public IList<Live<SkinInfo>> GetAllUsableSkins() => getUsableSkins(withUseCurrentPlaceholder: false, withRandom: true);
 
         /// <summary>
         /// Returns the dropdown ordering for use by the hitsound skin selection UI.
         /// Inserts '&lt;Use active skin&gt;' first, then defaults, then custom ones.
         /// </summary>
-        public IList<Live<SkinInfo>> GetAllUsableHitsoundSkins()
-        {
-            var skins = new List<Live<SkinInfo>>
-            {
-                use_current_skin_info
-            };
-
-            Realm.Run(realm =>
-            {
-                skins.Add(realm.Find<SkinInfo>(SkinInfo.ARGON_SKIN).ToLive(Realm));
-                skins.Add(realm.Find<SkinInfo>(SkinInfo.ARGON_PRO_SKIN).ToLive(Realm));
-                skins.Add(realm.Find<SkinInfo>(SkinInfo.TRIANGLES_SKIN).ToLive(Realm));
-                skins.Add(realm.Find<SkinInfo>(SkinInfo.CLASSIC_SKIN).ToLive(Realm));
-                skins.Add(realm.Find<SkinInfo>(SkinInfo.RETRO_SKIN).ToLive(Realm));
-
-                var userSkins = realm.All<SkinInfo>()
-                                     .Where(s => !s.DeletePending && !s.Protected)
-                                     .AsEnumerable()
-                                     .OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
-                                     .Select(s => s.ToLive(Realm));
-
-                foreach (var s in userSkins)
-                    skins.Add(s);
-            });
-
-            return skins;
-        }
+        public IList<Live<SkinInfo>> GetAllUsableHitsoundSkins() => getUsableSkins(withUseCurrentPlaceholder: true, withRandom: false);
 
         /// <summary>
         /// Returns the dropdown ordering for use by the cursor skin selection UI.
         /// Inserts '&lt;Use active skin&gt;' first, then defaults, then custom ones.
         /// </summary>
-        public IList<Live<SkinInfo>> GetAllUsableCursorSkins()
+        public IList<Live<SkinInfo>> GetAllUsableCursorSkins() => getUsableSkins(withUseCurrentPlaceholder: true, withRandom: false);
+
+        private IList<Live<SkinInfo>> getUsableSkins(bool withUseCurrentPlaceholder, bool withRandom)
         {
-            var skins = new List<Live<SkinInfo>>
-            {
-                use_current_skin_info
-            };
+            var skins = new List<Live<SkinInfo>>();
+
+            if (withUseCurrentPlaceholder)
+                skins.Add(use_current_skin_info);
 
             Realm.Run(realm =>
             {
@@ -253,6 +204,9 @@ namespace osu.Game.Skinning
                 skins.Add(realm.Find<SkinInfo>(SkinInfo.TRIANGLES_SKIN).ToLive(Realm));
                 skins.Add(realm.Find<SkinInfo>(SkinInfo.CLASSIC_SKIN).ToLive(Realm));
                 skins.Add(realm.Find<SkinInfo>(SkinInfo.RETRO_SKIN).ToLive(Realm));
+
+                if (withRandom)
+                    skins.Add(random_skin_info);
 
                 var userSkins = realm.All<SkinInfo>()
                                      .Where(s => !s.DeletePending && !s.Protected)
@@ -558,60 +512,26 @@ namespace osu.Game.Skinning
         }
 
         public void SetHitsoundSkinFromConfiguration(string guidString)
-        {
-            if (string.IsNullOrEmpty(guidString))
-            {
-                CurrentHitsoundSkinInfo.Value = use_current_skin_info;
-                return;
-            }
-
-            Live<SkinInfo> skinInfo = null;
-
-            if (Guid.TryParse(guidString, out var guid))
-            {
-                if (guid == SkinInfo.USE_CURRENT_SKIN)
-                {
-                    CurrentHitsoundSkinInfo.Value = use_current_skin_info;
-                    return;
-                }
-
-                skinInfo = Query(s => s.ID == guid);
-
-                if (skinInfo == null)
-                {
-                    if (guid == SkinInfo.CLASSIC_SKIN)
-                        skinInfo = DefaultClassicSkin.SkinInfo;
-                    else if (guid == SkinInfo.RETRO_SKIN)
-                        skinInfo = retroSkin.SkinInfo;
-                    else if (guid == SkinInfo.TRIANGLES_SKIN)
-                        skinInfo = trianglesSkin.SkinInfo;
-                    else if (guid == SkinInfo.ARGON_SKIN)
-                        skinInfo = argonSkin.SkinInfo;
-                }
-            }
-
-            CurrentHitsoundSkinInfo.Value = skinInfo ?? use_current_skin_info;
-        }
+            => CurrentHitsoundSkinInfo.Value = resolveAuxiliarySkinInfo(guidString);
 
         public void SetCursorSkinFromConfiguration(string guidString)
+            => CurrentCursorSkinInfo.Value = resolveAuxiliarySkinInfo(guidString);
+
+        /// <summary>
+        /// Resolves a hitsound/cursor skin GUID string from configuration into a <see cref="SkinInfo"/>,
+        /// falling back to '&lt;Use active skin&gt;' when unset, unresolvable, or explicitly the current skin.
+        /// </summary>
+        private Live<SkinInfo> resolveAuxiliarySkinInfo(string guidString)
         {
             if (string.IsNullOrEmpty(guidString))
-            {
-                CurrentCursorSkinInfo.Value = use_current_skin_info;
-                return;
-            }
-
-            Live<SkinInfo> skinInfo = null;
+                return use_current_skin_info;
 
             if (Guid.TryParse(guidString, out var guid))
             {
                 if (guid == SkinInfo.USE_CURRENT_SKIN)
-                {
-                    CurrentCursorSkinInfo.Value = use_current_skin_info;
-                    return;
-                }
+                    return use_current_skin_info;
 
-                skinInfo = Query(s => s.ID == guid);
+                Live<SkinInfo> skinInfo = Query(s => s.ID == guid);
 
                 if (skinInfo == null)
                 {
@@ -624,9 +544,12 @@ namespace osu.Game.Skinning
                     else if (guid == SkinInfo.ARGON_SKIN)
                         skinInfo = argonSkin.SkinInfo;
                 }
+
+                if (skinInfo != null)
+                    return skinInfo;
             }
 
-            CurrentCursorSkinInfo.Value = skinInfo ?? use_current_skin_info;
+            return use_current_skin_info;
         }
     }
 }

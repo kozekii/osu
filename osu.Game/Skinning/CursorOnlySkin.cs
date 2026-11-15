@@ -51,52 +51,20 @@ namespace osu.Game.Skinning
             return null;
         }
 
-        private static bool isCursorLookup(ISkinComponentLookup lookup)
-        {
-            if (lookup == null) return false;
+        private static bool isCursorLookup(ISkinComponentLookup lookup) => hasCursorName(lookup);
 
-            var type = lookup.GetType();
-            while (type != null && type != typeof(object))
-            {
-                if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(SkinComponentLookup<>))
-                {
-                    var componentProp = type.GetField("Component");
-                    if (componentProp != null)
-                    {
-                        var val = componentProp.GetValue(lookup)?.ToString();
-                        if (val != null && val.IndexOf("Cursor", StringComparison.OrdinalIgnoreCase) >= 0)
-                            return true;
-                    }
-                }
-                type = type.BaseType;
-            }
+        private static bool isCursorTexture(string componentName) =>
+            componentName.Contains("cursor", StringComparison.OrdinalIgnoreCase)
+            || componentName.Equals("star2", StringComparison.OrdinalIgnoreCase);
 
-            return lookup.ToString()?.IndexOf("Cursor", StringComparison.OrdinalIgnoreCase) >= 0;
-        }
+        private static bool isCursorConfig(object lookup) => hasCursorName(lookup);
 
-        private static bool isCursorTexture(string componentName)
-        {
-            if (string.IsNullOrEmpty(componentName))
-                return false;
-
-            string lower = componentName.ToLowerInvariant();
-            return lower.StartsWith("cursor", StringComparison.Ordinal)
-                   || lower.Contains("/cursor", StringComparison.Ordinal)
-                   || lower.Contains("cursortrail", StringComparison.Ordinal)
-                   || lower.Contains("cursormiddle", StringComparison.Ordinal)
-                   || lower.Contains("cursorexpand", StringComparison.Ordinal)
-                   || lower.Contains("cursorripple", StringComparison.Ordinal)
-                   || lower.Contains("cursorsmoke", StringComparison.Ordinal)
-                   || lower == "star2";
-        }
-
-        private static bool isCursorConfig(object lookup)
-        {
-            if (lookup == null)
-                return false;
-
-            string str = lookup.ToString() ?? string.Empty;
-            return str.IndexOf("Cursor", StringComparison.OrdinalIgnoreCase) >= 0;
-        }
+        /// <summary>
+        /// Whether a lookup refers to a cursor element by name. <see cref="SkinComponentLookup{T}"/> renders
+        /// its component enum name via <see cref="object.ToString"/>, so this covers every ruleset's cursor
+        /// components (and cursor skin configurations) without depending on ruleset assemblies.
+        /// </summary>
+        private static bool hasCursorName(object lookup) =>
+            lookup?.ToString()?.Contains("cursor", StringComparison.OrdinalIgnoreCase) == true;
     }
 }

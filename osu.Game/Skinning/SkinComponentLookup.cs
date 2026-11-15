@@ -18,5 +18,7 @@ namespace osu.Game.Skinning
         {
             Component = component;
         }
+
+        public override string ToString() => Component.ToString();
     }
 }

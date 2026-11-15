@@ -6,19 +6,25 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
+using osu.Framework.Graphics.Rendering;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Graphics.Textures;
 using osu.Framework.Utils;
 using osu.Game.Configuration;
+using osu.Game.IO;
 using osu.Game.Overlays.Settings;
 using osu.Game.Rulesets.Scoring;
 using osu.Game.Screens.Play;
 using osu.Game.Utils;
 using osuTK;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
 
 namespace osu.Game.Skinning.Components
 {
@@ -106,16 +112,35 @@ namespace osu.Game.Skinning.Components
         [Resolved(canBeNull: true)]
         private ISkinSource? skinSource { get; set; }
 
-        [Resolved]
-        private TextureStore textures { get; set; } = null!;
-
         [Resolved(canBeNull: true)]
         private ScoreProcessor? scoreProcessor { get; set; }
 
         [Resolved(canBeNull: true)]
         private GameplayUnderlayContainer? underlayContainer { get; set; }
 
-        private readonly List<Texture> availableTextures = new List<Texture>();
+        /// <summary>
+        /// Bursts are displayed at roughly their "@2x" halves (2048px artwork shows at 1024px), so anything
+        /// larger than this is wasted VRAM and drags a huge upload through the draw thread for no visual gain.
+        /// </summary>
+        private const int max_burst_texture_size = 1024;
+
+        /// <summary>
+        /// How many decoded images to keep ready ahead of time, so a burst never has to wait on a
+        /// decode (and its upload) at the exact moment it is meant to appear.
+        /// </summary>
+        private const int warm_pool_size = 3;
+
+        private readonly List<string> availableFiles = new List<string>();
+        private readonly List<string> warmPool = new List<string>();
+        private readonly Dictionary<string, Texture> textureCache = new Dictionary<string, Texture>();
+        private readonly HashSet<string> pendingLoads = new HashSet<string>();
+        private readonly List<string> cachedFileList = new List<string>();
+        private string? cachedFileListKey;
+        private ISkin? activeSkin;
+        private RealmBackedResourceStore<SkinInfo>? burstFileStore;
+        private IRenderer? burstRenderer;
+        private Guid burstFileStoreSkinId;
+        private int loadGeneration;
         private readonly Container burstContainer;
         private int lastTriggeredCombo;
         private int currentTextureIndex;
@@ -158,7 +183,7 @@ namespace osu.Game.Skinning.Components
             if (!IsLoaded)
                 return;
 
-            availableTextures.Clear();
+            availableFiles.Clear();
 
             string prefix = CustomPrefix.Value?.Trim() ?? string.Empty;
             if (string.IsNullOrEmpty(prefix))
@@ -174,42 +199,81 @@ namespace osu.Game.Skinning.Components
             if (currentSkin == null || currentSkinInfo == null)
                 return;
 
-            // Search ONLY the files actually present in the active user skin
+            // Reloading is triggered by both load completion and skin-source changes during a single
+            // player load; resolving the same skin twice would double the file scan for no gain.
+            string cacheKey = $"{currentSkinInfo.ID}|{prefix}";
+
+            activeSkin = currentSkin;
+
+            // The texture pipeline reads straight from the skin's user files; it goes stale with the skin.
+            if (burstFileStore == null || burstFileStoreSkinId != currentSkinInfo.ID)
+                rebuildTexturePipeline();
+
+            if (cachedFileListKey == cacheKey)
+            {
+                availableFiles.AddRange(cachedFileList);
+                refillWarmPool();
+                return;
+            }
+
+            // Search ONLY the files actually present in the active user skin.
             List<string>? matchingFiles = currentSkinInfo.PerformRead(s =>
                 s.Files
                  .Where(f => SupportedExtensions.IMAGE_EXTENSIONS.Contains(Path.GetExtension(f.Filename).ToLowerInvariant()))
-                 .Select(f => Path.GetFileNameWithoutExtension(f.Filename))
                  .Where(f =>
                  {
-                     string clean = Regex.Replace(f, @"@\d+x$", "", RegexOptions.IgnoreCase);
-                     string baseName = Regex.Replace(clean, @"[-_]\d+$", "");
-                     return string.Equals(clean, prefix, StringComparison.OrdinalIgnoreCase)
-                            || string.Equals(baseName, prefix, StringComparison.OrdinalIgnoreCase)
-                            || clean.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+                     string filenameNoExt = Path.GetFileNameWithoutExtension(f.Filename);
+                     string cleanFilename = Regex.Replace(filenameNoExt, @"@\d+x$", "", RegexOptions.IgnoreCase);
+                     string baseFilename = Regex.Replace(cleanFilename, @"[-_]\d+$", "");
+                     string dirName = (Path.GetDirectoryName(f.Filename) ?? string.Empty).Replace('\\', '/');
+                     string fullNoExt = Path.ChangeExtension(f.Filename, null).Replace('\\', '/');
+
+                     return string.Equals(cleanFilename, prefix, StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(baseFilename, prefix, StringComparison.OrdinalIgnoreCase)
+                            || cleanFilename.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(dirName, prefix, StringComparison.OrdinalIgnoreCase)
+                            || dirName.EndsWith("/" + prefix, StringComparison.OrdinalIgnoreCase)
+                            || fullNoExt.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
                  })
+                 .Select(f => f.Filename.Replace('\\', '/'))
                  .Distinct()
                  .OrderBy(f => f)
                  .ToList()
             );
 
-            if (matchingFiles != null && matchingFiles.Count > 0)
+            if (matchingFiles != null)
             {
-                foreach (var key in matchingFiles)
+                // Collapse "comboburst-5.png" and "comboburst-5@2x.png" into one entry, keeping the
+                // high-resolution variant - that's the one legacy skins would pick anyway.
+                var filesByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (string file in matchingFiles)
                 {
-                    string cleanKey = Regex.Replace(key, @"@\d+x$", "", RegexOptions.IgnoreCase);
-                    var tex = currentSkin.GetTexture(cleanKey) ?? currentSkin.GetTexture(key);
-                    if (tex != null && !availableTextures.Contains(tex))
-                        availableTextures.Add(tex);
+                    string pathNoExt = Path.ChangeExtension(file, null);
+                    string cleanPathNoExt = Regex.Replace(pathNoExt, @"@\d+x$", "", RegexOptions.IgnoreCase);
+
+                    if (!filesByName.TryGetValue(cleanPathNoExt, out string? existing) || isHighResolution(file) && !isHighResolution(existing))
+                        filesByName[cleanPathNoExt] = file;
                 }
+
+                availableFiles.AddRange(filesByName.Values.OrderBy(f => f, StringComparer.OrdinalIgnoreCase));
             }
 
             // Fallback for custom prefix if specific prefix wasn't found in skin
-            if (availableTextures.Count == 0 && prefix != "comboburst")
-            {
-                var fallback = currentSkin.GetTexture("comboburst");
-                if (fallback != null)
-                    availableTextures.Add(fallback);
-            }
+            if (availableFiles.Count == 0 && prefix != "comboburst")
+                availableFiles.Add("comboburst");
+
+            cachedFileListKey = cacheKey;
+            cachedFileList.Clear();
+            cachedFileList.AddRange(availableFiles);
+
+            // Textures belong to the previous skin; drop them and invalidate in-flight loads.
+            textureCache.Clear();
+            warmPool.Clear();
+            loadGeneration++;
+
+            // Pre-decode a few images so upcoming combo milestones aren't waiting on a decode.
+            refillWarmPool();
         }
 
         private void onComboChanged(ValueChangedEvent<int> e)
@@ -239,22 +303,220 @@ namespace osu.Game.Skinning.Components
 
         private void triggerComboburst()
         {
-            if (availableTextures.Count == 0)
+            if (availableFiles.Count == 0)
                 return;
 
-            int index;
-            if (RandomizeCharacter.Value)
+            string path;
+
+            if (RandomizeCharacter.Value && warmPool.Count > 0)
             {
-                index = RNG.Next(availableTextures.Count);
+                int poolIndex = RNG.Next(warmPool.Count);
+                path = warmPool[poolIndex];
+                warmPool.RemoveAt(poolIndex);
             }
             else
             {
-                index = currentTextureIndex % availableTextures.Count;
-                currentTextureIndex++;
+                int index;
+                if (RandomizeCharacter.Value)
+                {
+                    index = RNG.Next(availableFiles.Count);
+                }
+                else
+                {
+                    index = currentTextureIndex % availableFiles.Count;
+                    currentTextureIndex++;
+                }
+
+                path = availableFiles[index];
             }
 
-            var texture = availableTextures[index];
+            // Play the cue immediately - the artwork may still be decoding, but the burst should
+            // never be silenced just because the first use of a large image is still in flight.
+            var sample = skinSource?.GetSample(new osu.Game.Audio.SampleInfo("comboburst"))
+                         ?? skinManager?.CurrentSkin.Value.GetSample(new osu.Game.Audio.SampleInfo("comboburst"));
+            sample?.Play();
 
+            if (textureCache.TryGetValue(path, out var texture))
+            {
+                spawnBurst(texture);
+                refillWarmPool();
+                return;
+            }
+
+            if (pendingLoads.Contains(path))
+                return;
+
+            loadTexture(path, loaded =>
+            {
+                spawnBurst(loaded);
+                refillWarmPool();
+            });
+        }
+
+        /// <summary>
+        /// Loads a single comboburst image off the update thread. Eagerly decoding every comboburst
+        /// in the skin used to cost seconds of load time and gigabytes of VRAM for 4K image packs.
+        /// </summary>
+        private void loadTexture(string path, Action<Texture> onLoaded, bool warmLoad = false)
+        {
+            if (!pendingLoads.Add(path))
+                return;
+
+            int generation = loadGeneration;
+
+            Task.Run(() =>
+            {
+                Texture? texture = null;
+
+                try
+                {
+                    texture = loadBurstTexture(path);
+                }
+                catch (Exception)
+                {
+                    // A skin can be disposed mid-lookup when switching presets; treat as missing.
+                }
+
+                try
+                {
+                    Schedule(() =>
+                    {
+                        pendingLoads.Remove(path);
+
+                        if (generation != loadGeneration || IsDisposed)
+                            return;
+
+                        if (texture == null)
+                        {
+                            // Don't keep retrying a lookup that will never resolve.
+                            availableFiles.Remove(path);
+                            cachedFileList.Remove(path);
+                            return;
+                        }
+
+                        textureCache[path] = texture;
+
+                        if (warmLoad)
+                        {
+                            warmPool.Add(path);
+                            refillWarmPool();
+                        }
+
+                        onLoaded(texture);
+                    });
+                }
+                catch (ObjectDisposedException)
+                {
+                }
+            });
+        }
+
+        private void rebuildTexturePipeline()
+        {
+            burstFileStore?.Dispose();
+            burstFileStore = null;
+            burstRenderer = null;
+
+            if (skinManager is not IStorageResourceProvider provider)
+                return;
+
+            var skinInfo = skinManager.CurrentSkinInfo.Value;
+
+            burstFileStore = new RealmBackedResourceStore<SkinInfo>(skinInfo, provider.Files, provider.RealmAccess);
+            burstRenderer = provider.Renderer;
+            burstFileStoreSkinId = skinInfo.ID;
+        }
+
+        /// <summary>
+        /// Decodes a comboburst image off the update thread, downscaling it to roughly its on-screen
+        /// resolution before it reaches the GPU. 2048x2048 burst packs are a 16 MB draw-thread upload
+        /// plus mipmap generation per image; at the size bursts actually display at, that work is
+        /// invisible except as frame drops the first time each one is used.
+        /// </summary>
+        private Texture? loadBurstTexture(string path)
+        {
+            var fileStore = burstFileStore;
+            var renderer = burstRenderer;
+
+            if (fileStore != null && renderer != null)
+            {
+                using (Stream? stream = fileStore.GetStream(path))
+                {
+                    if (stream != null)
+                    {
+                        SixLabors.ImageSharp.Image<Rgba32> image = SixLabors.ImageSharp.Image.Load<Rgba32>(stream);
+                        int originalWidth = image.Width;
+
+                        if (image.Width > max_burst_texture_size || image.Height > max_burst_texture_size)
+                        {
+                            image.Mutate(i => i.Resize(new ResizeOptions
+                            {
+                                Size = new Size(max_burst_texture_size, max_burst_texture_size),
+                                Mode = ResizeMode.Max,
+
+                                // Box averages whole source pixels instead of sampling a 2x2 kernel per
+                                // output pixel - it is an order of magnitude faster at this ratio and
+                                // the visual difference on character art is imperceptible.
+                                Sampler = KnownResamplers.Box,
+                            }));
+                        }
+
+                        var upload = new TextureUpload(image);
+                        var texture = renderer.CreateTexture(upload.Width, upload.Height, false, TextureFilteringMode.Linear, WrapMode.None, WrapMode.None);
+
+                        // "@2x" artwork is displayed at half its pixel size by legacy skin lookups.
+                        float legacyScale = isHighResolution(path) ? 2f : 1f;
+
+                        // Keep the on-screen size identical to the untouched legacy lookup.
+                        texture.AssetName = path;
+                        texture.ScaleAdjust = legacyScale * upload.Width / originalWidth;
+                        texture.SetData(upload);
+
+                        return texture;
+                    }
+                }
+            }
+
+            // Fallback for skins whose files aren't visible through the active skin's storage
+            // (e.g. beatmap skin overrides); loads at full resolution like before.
+            return activeSkin?.GetTexture(path);
+        }
+
+        private static bool isHighResolution(string filename) =>
+            Path.GetFileNameWithoutExtension(filename).EndsWith("@2x", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Keeps a small set of images decoded ahead of time. With random selection a lucky prefetch
+        /// almost never matches the next pick, so the pool is what actually gets drawn from.
+        /// </summary>
+        private void refillWarmPool()
+        {
+            if (availableFiles.Count == 0)
+                return;
+
+            int target = RandomizeCharacter.Value ? warm_pool_size : 1;
+
+            for (int attempts = 0; warmPool.Count < target && pendingLoads.Count < 2 && attempts < 32; attempts++)
+            {
+                string path = RandomizeCharacter.Value
+                    ? availableFiles[RNG.Next(availableFiles.Count)]
+                    : availableFiles[currentTextureIndex % availableFiles.Count];
+
+                if (warmPool.Contains(path) || pendingLoads.Contains(path))
+                    continue;
+
+                if (textureCache.ContainsKey(path))
+                {
+                    warmPool.Add(path);
+                    continue;
+                }
+
+                loadTexture(path, _ => { }, warmLoad: true);
+            }
+        }
+
+        private void spawnBurst(Texture texture)
+        {
             switch (Side.Value)
             {
                 case ComboburstSide.LeftOnly:
@@ -280,10 +542,6 @@ namespace osu.Game.Skinning.Components
                     nextSideIsLeft = !nextSideIsLeft;
                     break;
             }
-
-            var sample = skinSource?.GetSample(new osu.Game.Audio.SampleInfo("comboburst"))
-                         ?? skinManager?.CurrentSkin.Value.GetSample(new osu.Game.Audio.SampleInfo("comboburst"));
-            sample?.Play();
         }
 
         private void spawnBurstSprite(Texture texture, bool isLeft)
@@ -349,6 +607,12 @@ namespace osu.Game.Skinning.Components
         {
             base.Dispose(isDisposing);
 
+            // Invalidate any in-flight texture lookups so their continuations don't touch a disposed drawable.
+            loadGeneration++;
+
+            burstFileStore?.Dispose();
+            burstFileStore = null;
+
             if (skinSource != null)
                 skinSource.SourceChanged -= onSkinSourceChanged;
         }
@@ -366,18 +630,29 @@ namespace osu.Game.Skinning.Components
                 string[]? availableFiles = currentSkinInfo?.PerformRead(
                     s => s.Files
                           .Where(f => SupportedExtensions.IMAGE_EXTENSIONS.Contains(Path.GetExtension(f.Filename).ToLowerInvariant()))
-                          .Select(f => Path.GetFileNameWithoutExtension(f.Filename))
+                          .Select(f => f.Filename.Replace('\\', '/'))
                           .Distinct()).ToArray();
 
                 if (availableFiles != null && availableFiles.Length > 0)
                 {
-                    var cleanOptions = availableFiles
-                                       .Select(f => Regex.Replace(f, @"@\d+x$", "", RegexOptions.IgnoreCase))
-                                       .Select(f => Regex.Replace(f, @"[-_]\d+$", ""))
-                                       .Distinct()
-                                       .OrderBy(f => f);
+                    var options = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-                    Items = cleanOptions.ToArray();
+                    foreach (string file in availableFiles)
+                    {
+                        string dir = (Path.GetDirectoryName(file) ?? string.Empty).Replace('\\', '/');
+                        if (!string.IsNullOrEmpty(dir))
+                            options.Add(dir);
+
+                        string name = Path.GetFileNameWithoutExtension(file);
+                        string cleanName = Regex.Replace(name, @"@\d+x$", "", RegexOptions.IgnoreCase);
+                        string baseName = Regex.Replace(cleanName, @"[-_]\d+$", "");
+
+                        if (!string.IsNullOrEmpty(baseName))
+                            options.Add(baseName);
+                    }
+
+                    var sorted = options.OrderBy(o => o.Equals("comboburst", StringComparison.OrdinalIgnoreCase) ? string.Empty : o).ToArray();
+                    Items = sorted;
                 }
             }
         }

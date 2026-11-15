@@ -43,6 +43,9 @@ namespace osu.Game.Skinning
         [Resolved]
         private ISkinSource source { get; set; } = null!;
 
+        [Resolved]
+        private SkinManager skins { get; set; } = null!;
+
         private readonly bool isUserPlaced;
 
         public SkinnableSprite(string textureName, Vector2? maxSize = null, ConfineMode confineMode = ConfineMode.NoScaling)
@@ -77,6 +80,21 @@ namespace osu.Game.Skinning
         protected override Drawable CreateDefault(ISkinComponentLookup lookup)
         {
             var spriteLookup = (SpriteComponentLookup)lookup;
+
+            // Video assets are not backed by a texture; render them as a looping preview that also plays at runtime.
+            if (SkinAssetResolver.IsVideo(spriteLookup.LookupName))
+            {
+                var videoPreview = new SkinAssetPreview(showChrome: false)
+                {
+                    Size = spriteLookup.MaxSize ?? new Vector2(256, 144),
+                };
+
+                videoPreview.Set(spriteLookup.LookupName,
+                    videoStreamProvider: () => SkinAssetResolver.GetVideoStream(skins, source, spriteLookup.LookupName));
+
+                return videoPreview;
+            }
+
             var texture = textures.Get(spriteLookup.LookupName);
 
             if (texture == null)
@@ -104,41 +122,74 @@ namespace osu.Game.Skinning
 
         public partial class SpriteSelectorControl : SettingsDropdown<string>
         {
+            [Resolved]
+            private SkinManager skins { get; set; } = null!;
+
+            private SkinAssetPreview? preview;
+
             protected override void LoadComplete()
             {
                 base.LoadComplete();
 
-                var highestPrioritySkin = getHighestPriorityUserSkin(((SkinnableSprite)SettingSourceObject).source.AllSources) as Skin;
+                var sprite = (SkinnableSprite)SettingSourceObject;
+                var highestPrioritySkin = getHighestPriorityUserSkin(sprite.source.AllSources) as Skin;
 
                 string[]? availableFiles = highestPrioritySkin?.SkinInfo.PerformRead(
                     s => s.Files
-                          .Where(f => SupportedExtensions.IMAGE_EXTENSIONS.Contains(Path.GetExtension(f.Filename).ToLowerInvariant()))
+                          .Where(f =>
+                          {
+                              string ext = Path.GetExtension(f.Filename).ToLowerInvariant();
+                              return SupportedExtensions.IMAGE_EXTENSIONS.Contains(ext) || SkinAssetResolver.IsVideo(f.Filename);
+                          })
                           .Select(f => f.Filename).Distinct()).ToArray();
 
                 if (availableFiles?.Length > 0)
                     Items = availableFiles;
 
+                // Preview of the currently selected asset (image thumbnail or looping video).
+                Content.Add(preview = new SkinAssetPreview
+                {
+                    RelativeSizeAxes = Axes.X,
+                    Height = 90,
+                    Margin = new MarginPadding { Top = 8 },
+                });
+
+                Current.BindValueChanged(_ => updatePreview(), true);
+
                 static ISkin? getHighestPriorityUserSkin(IEnumerable<ISkin> skins)
                 {
                     foreach (var skin in skins)
                     {
-                        if (skin is ISkinTransformer transformer && isUserSkin(transformer.Skin))
+                        if (skin is ISkinTransformer transformer && SkinAssetResolver.IsUserSkin(transformer.Skin))
                             return transformer.Skin;
 
-                        if (isUserSkin(skin))
+                        if (SkinAssetResolver.IsUserSkin(skin))
                             return skin;
                     }
 
                     return null;
                 }
+            }
 
-                static bool isUserSkin(ISkin skin)
-                    => skin.GetType() == typeof(TrianglesSkin)
-                       || skin.GetType() == typeof(ArgonProSkin)
-                       || skin.GetType() == typeof(ArgonSkin)
-                       || skin.GetType() == typeof(DefaultLegacySkin)
-                       || skin.GetType() == typeof(RetroSkin)
-                       || skin.GetType() == typeof(LegacySkin);
+            private void updatePreview()
+            {
+                if (preview == null)
+                    return;
+
+                string filename = Current.Value ?? string.Empty;
+
+                if (string.IsNullOrEmpty(filename))
+                {
+                    preview.Set(string.Empty);
+                    return;
+                }
+
+                var sprite = (SkinnableSprite)SettingSourceObject;
+
+                preview.Set(
+                    filename,
+                    image: SkinAssetResolver.GetImage(sprite.source, filename),
+                    videoStreamProvider: () => SkinAssetResolver.GetVideoStream(skins, sprite.source, filename));
             }
         }
 

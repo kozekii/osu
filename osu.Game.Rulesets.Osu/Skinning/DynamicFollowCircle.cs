@@ -1,10 +1,11 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-using System.Linq;
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
+using osu.Game.Rulesets.Objects;
 using osu.Game.Rulesets.Objects.Drawables;
 using osu.Game.Rulesets.Osu.Objects.Drawables;
 using osu.Game.Rulesets.Osu.Skinning.Default;
@@ -15,14 +16,25 @@ namespace osu.Game.Rulesets.Osu.Skinning
 {
     public partial class DynamicFollowCircle : CompositeDrawable
     {
+        /// <summary>
+        /// How far ahead of a slider's start time its follow circle content is created.
+        /// Sliders are all created up front when a beatmap loads, so materialising eagerly would
+        /// open one video decoder per slider before the first note is even played.
+        /// </summary>
+        private const double prewarm_time = 1000;
+
+        /// <summary>
+        /// Delay after a slider's end time before its content is torn down and decoders are released.
+        /// </summary>
+        private const double release_delay = 2000;
+
         [Resolved(CanBeNull = true)]
         private FollowCircleManager? followCircleManager { get; set; }
 
-        [Resolved]
-        private SkinManager skins { get; set; } = null!;
-
         private Container contentContainer = null!;
         private DrawableSlider? drawableSlider;
+
+        private bool materialised;
 
         public DynamicFollowCircle()
         {
@@ -42,8 +54,6 @@ namespace osu.Game.Rulesets.Osu.Skinning
                 Anchor = Anchor.Centre,
                 Origin = Anchor.Centre,
             };
-
-            updateFollowCircle();
         }
 
         protected override void LoadComplete()
@@ -55,16 +65,64 @@ namespace osu.Game.Rulesets.Osu.Skinning
 
             if (followCircleManager != null)
             {
-                followCircleManager.Mode.BindValueChanged(_ => updateFollowCircle());
-                followCircleManager.CustomFollowCircleId.BindValueChanged(_ => updateFollowCircle());
-                followCircleManager.CircularMask.BindValueChanged(_ => updateFollowCircle());
+                // Named handlers so the subscriptions can be released in Dispose. These bindables live on a
+                // game-wide manager, so a leaked handler would keep every disposed (pooled) slider alive and
+                // invoke updateFollowCircle() on it forever.
+                followCircleManager.Mode.ValueChanged += onModeChanged;
+                followCircleManager.CustomFollowCircleId.ValueChanged += onCustomFollowCircleChanged;
+                followCircleManager.CircularMask.ValueChanged += onCircularMaskChanged;
             }
+        }
+
+        protected override void Update()
+        {
+            base.Update();
+
+            if (drawableSlider?.HitObject == null)
+                return;
+
+            double startTime = drawableSlider.HitObject.StartTime;
+            double endTime = drawableSlider.HitObject.GetEndTime();
+
+            if (!materialised)
+            {
+                if (Time.Current >= startTime - prewarm_time)
+                    materialise();
+            }
+            else if (Time.Current > endTime + release_delay)
+            {
+                release();
+            }
+        }
+
+        private void materialise()
+        {
+            materialised = true;
+            updateFollowCircle();
+        }
+
+        private void release()
+        {
+            materialised = false;
+            contentContainer.Clear();
+        }
+
+        private void onModeChanged(ValueChangedEvent<FollowCircleMode> _) => onManagerSettingChanged();
+        private void onCustomFollowCircleChanged(ValueChangedEvent<string> _) => onManagerSettingChanged();
+        private void onCircularMaskChanged(ValueChangedEvent<bool> _) => onManagerSettingChanged();
+
+        private void onManagerSettingChanged()
+        {
+            // If the circle hasn't been materialised yet it will pick up the current settings on creation.
+            if (materialised)
+                updateFollowCircle();
         }
 
         private void onHitObjectApplied(DrawableHitObject d)
         {
-            // When slider is pooled and reused for a new hitobject, update follow circle if in Cycle or Random mode!
-            if (followCircleManager != null && (followCircleManager.Mode.Value == FollowCircleMode.Cycle || followCircleManager.Mode.Value == FollowCircleMode.Random))
+            // When a slider is pooled and reused for a new hitobject, cycle/random must pick a new item.
+            if (materialised && followCircleManager != null
+                              && (followCircleManager.Mode.Value == FollowCircleMode.Cycle || followCircleManager.Mode.Value == FollowCircleMode.Random))
             {
                 updateFollowCircle();
             }
@@ -121,19 +179,12 @@ namespace osu.Game.Rulesets.Osu.Skinning
                     break;
 
                 case FollowCircleType.SkinReference:
-                    if (item.SkinId.HasValue)
+                    var skin = followCircleManager?.GetSkinReference(item);
+                    if (skin != null)
                     {
-                        var targetSkin = skins.GetAllUsableSkins().FirstOrDefault(s => s.ID == item.SkinId.Value);
-                        if (targetSkin != null)
-                        {
-                            var skinInstance = targetSkin.PerformRead(skins.GetSkin);
-                            if (skinInstance != null)
-                            {
-                                var comp = skinInstance.GetDrawableComponent(new OsuSkinComponentLookup(OsuSkinComponents.SliderFollowCircle));
-                                if (comp != null)
-                                    return comp;
-                            }
-                        }
+                        var comp = skin.GetDrawableComponent(new OsuSkinComponentLookup(OsuSkinComponents.SliderFollowCircle));
+                        if (comp != null)
+                            return comp;
                     }
                     break;
 
@@ -151,6 +202,13 @@ namespace osu.Game.Rulesets.Osu.Skinning
 
             if (drawableSlider != null)
                 drawableSlider.HitObjectApplied -= onHitObjectApplied;
+
+            if (followCircleManager != null)
+            {
+                followCircleManager.Mode.ValueChanged -= onModeChanged;
+                followCircleManager.CustomFollowCircleId.ValueChanged -= onCustomFollowCircleChanged;
+                followCircleManager.CircularMask.ValueChanged -= onCircularMaskChanged;
+            }
         }
     }
 }

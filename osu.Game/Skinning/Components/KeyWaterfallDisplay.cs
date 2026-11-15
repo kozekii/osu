@@ -262,6 +262,7 @@ namespace osu.Game.Skinning.Components
                     streamArea.Height = h.NewValue;
                     Height = h.NewValue + 42;
                 });
+                parent.Direction.BindValueChanged(_ => applyDirection(), true);
 
                 parent.ShowKeyLabels.BindValueChanged(l => keyLabel.FadeTo(l.NewValue ? 1 : 0, 150), true);
                 parent.ShowPressCounts.BindValueChanged(c => keyCount.FadeTo(c.NewValue ? 1 : 0, 150), true);
@@ -269,6 +270,16 @@ namespace osu.Game.Skinning.Components
                 trigger.OnActivate += onActivate;
                 trigger.OnDeactivate += onDeactivate;
                 trigger.ActivationCount.BindValueChanged(c => keyCount.Text = c.NewValue.ToString());
+            }
+
+            private void applyDirection()
+            {
+                bool up = parent.Direction.Value == WaterfallDirection.Upward;
+
+                streamArea.Anchor = streamArea.Origin = up ? Anchor.TopLeft : Anchor.BottomLeft;
+                streamArea.Y = up ? 0 : 42;
+
+                keyBase.Anchor = keyBase.Origin = up ? Anchor.BottomLeft : Anchor.TopLeft;
             }
 
             private void onActivate(bool forwardPlayback)

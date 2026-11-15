@@ -281,7 +281,7 @@ namespace osu.Game.Skinning.Components
             {
                 string label = ShowLabels.Value ? "UR " : string.Empty;
                 string urStr = ur.HasValue ? $"{ur.Value:0.00}" : "-";
-                parts.Add($"{label}{urStr} UR");
+                parts.Add($"{label}{urStr}");
             }
 
             if (ShowGrade.Value)

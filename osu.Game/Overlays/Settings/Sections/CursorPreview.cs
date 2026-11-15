@@ -195,13 +195,26 @@ namespace osu.Game.Overlays.Settings.Sections
             reloadSkin();
         }
 
+        private const float cursor_reference_size = 64;
+
+        // Resolve from a specific Skin rather than SkinManager: SkinManager.GetTexture() walks all fallback
+        // sources, which leaks the default skin's cursormiddle in when the active user skin omits it.
+        // Probing the "Cursor/" sub-folder mirrors the trail handling.
+        private Texture getCursorTexture(Skin skin, string name)
+            => skin?.GetTexture(name) ?? skin?.GetTexture($"Cursor/{name}");
+
         private void reloadSkin()
         {
-            var skin = skins.CurrentCursorSkin.Value ?? skins.CurrentSkin.Value;
+            var cursorSkin = skins.CurrentCursorSkin.Value;
+            var baseSkin = skins.CurrentSkin.Value;
 
-            var cTex = skins.GetTexture("cursor", default, default);
-            var cmTex = skins.GetTexture("cursormiddle", default, default);
-            trailTexture = skins.GetTexture("cursortrail", default, default) ?? skins.GetTexture("Cursor/cursortrail", default, default);
+            // Cursor and trail may fall back to the base skin when a cursor-only override omits them.
+            var cTex = getCursorTexture(cursorSkin, "cursor") ?? getCursorTexture(baseSkin, "cursor");
+            trailTexture = getCursorTexture(cursorSkin, "cursortrail") ?? getCursorTexture(baseSkin, "cursortrail");
+
+            // The middle must come from the skin which supplied the cursor; never inherit another skin's
+            // (in particular the default skin's) cursormiddle when the active skin intentionally omits it.
+            var cmTex = getCursorTexture(cursorSkin ?? baseSkin, "cursormiddle");
 
             cursorSprite.Texture = cTex;
             cursorMiddleSprite.Texture = cmTex;
@@ -213,15 +226,34 @@ namespace osu.Game.Overlays.Settings.Sections
             cursorSprite.Alpha = isLegacyCursor ? 1 : 0;
             cursorMiddleSprite.Alpha = cmTex != null ? 1 : 0;
 
+            // Normalize the displayed size so @1x / @2x / sub-folder skins render at a consistent scale.
+            // The user's cursor-size setting is then applied on top as a multiplier.
+            float maxDim = cursor_reference_size;
+            if (cTex != null) maxDim = Math.Max(maxDim, Math.Max(cTex.Width, cTex.Height));
+            if (cmTex != null) maxDim = Math.Max(maxDim, Math.Max(cmTex.Width, cmTex.Height));
+            if (trailTexture != null) maxDim = Math.Max(maxDim, Math.Max(trailTexture.Width, trailTexture.Height));
+
+            float unitScale = cursor_reference_size / maxDim;
+
+            defaultCursorContainer.Size = new Vector2(cursor_reference_size);
+
             if (cTex != null)
             {
+                cursorSprite.Size = new Vector2(cTex.Width * unitScale, cTex.Height * unitScale);
                 cursorSprite.ClearTransforms();
                 cursorSprite.Spin(10000, RotationDirection.Clockwise);
             }
 
+            if (cmTex != null)
+                cursorMiddleSprite.Size = new Vector2(cmTex.Width * unitScale, cmTex.Height * unitScale);
+
             foreach (var part in trailPool)
             {
                 part.Texture = trailTexture;
+
+                if (trailTexture != null)
+                    part.Size = new Vector2(trailTexture.Width * unitScale, trailTexture.Height * unitScale);
+
                 part.Blending = disjointTrail ? BlendingParameters.Inherit : BlendingParameters.Additive;
             }
         }

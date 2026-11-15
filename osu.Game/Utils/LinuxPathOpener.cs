@@ -70,16 +70,27 @@ namespace osu.Game.Utils
 
                 // Check default file manager via xdg-mime first, then fall back through known managers and standard launchers.
                 // Note: Dolphin requires QT_QPA_PLATFORMTHEME=kde to match the user's dark theme from kdeglobals instead of blinding white!
+                // Each candidate is launched sequentially (first one present wins) so we never spawn multiple managers at once.
                 string script = $@"
 target='{escapedPath}'
-case ""$(xdg-mime query default inode/directory 2>/dev/null)"" in
-    *dolphin*) env QT_QPA_PLATFORMTHEME=kde dolphin ""$target"" >/dev/null 2>&1 & exit 0 ;;
-    *nautilus*) nautilus ""$target"" >/dev/null 2>&1 & exit 0 ;;
-    *thunar*) thunar ""$target"" >/dev/null 2>&1 & exit 0 ;;
-    *nemo*) nemo ""$target"" >/dev/null 2>&1 & exit 0 ;;
-    *pcmanfm*) pcmanfm ""$target"" >/dev/null 2>&1 & exit 0 ;;
+DM=""$(xdg-mime query default inode/directory 2>/dev/null)""
+case ""$DM"" in
+    *dolphin*)  PREFERRED=dolphin ;;
+    *nautilus*) PREFERRED=nautilus ;;
+    *thunar*)   PREFERRED=thunar ;;
+    *nemo*)     PREFERRED=nemo ;;
+    *pcmanfm*)  PREFERRED=pcmanfm ;;
+    *)          PREFERRED= ;;
 esac
-env QT_QPA_PLATFORMTHEME=kde dolphin ""$target"" >/dev/null 2>&1 & exit 0 || nautilus ""$target"" >/dev/null 2>&1 & exit 0 || thunar ""$target"" >/dev/null 2>&1 & exit 0 || nemo ""$target"" >/dev/null 2>&1 & exit 0 || pcmanfm ""$target"" >/dev/null 2>&1 & exit 0 || gio open ""$target"" >/dev/null 2>&1 & exit 0 || xdg-open ""$target"" >/dev/null 2>&1 &
+for c in ""$PREFERRED"" dolphin nautilus thunar nemo pcmanfm; do
+    [ -n ""$c"" ] || continue
+    if command -v ""$c"" >/dev/null 2>&1; then
+        QT_QPA_PLATFORMTHEME=kde ""$c"" ""$target"" >/dev/null 2>&1 &
+        exit 0
+    fi
+done
+command -v gio >/dev/null 2>&1 && {{ gio open ""$target"" >/dev/null 2>&1 & exit 0; }}
+xdg-open ""$target"" >/dev/null 2>&1 &
 ";
 
                 var psi = createShellProcessInfo(script);
@@ -117,17 +128,35 @@ env QT_QPA_PLATFORMTHEME=kde dolphin ""$target"" >/dev/null 2>&1 & exit 0 || nau
                 string parentDir = Path.GetDirectoryName(fullPath) ?? fullPath;
                 string escapedParent = parentDir.Replace("'", "'\\''");
 
+                // Launch a single manager sequentially (first present wins). Managers that support
+                // highlighting a file use --select; the rest fall back to opening the parent folder.
                 string script = $@"
 target='{escapedPath}'
 parent='{escapedParent}'
-case ""$(xdg-mime query default inode/directory 2>/dev/null)"" in
-    *dolphin*) env QT_QPA_PLATFORMTHEME=kde dolphin --select ""$target"" >/dev/null 2>&1 & exit 0 ;;
-    *nautilus*) nautilus --select ""$target"" >/dev/null 2>&1 & exit 0 ;;
-    *nemo*) nemo --no-desktop ""$target"" >/dev/null 2>&1 & exit 0 ;;
-    *thunar*) thunar ""$parent"" >/dev/null 2>&1 & exit 0 ;;
-    *pcmanfm*) pcmanfm ""$parent"" >/dev/null 2>&1 & exit 0 ;;
+DM=""$(xdg-mime query default inode/directory 2>/dev/null)""
+case ""$DM"" in
+    *dolphin*)  PREFERRED=dolphin ;;
+    *nautilus*) PREFERRED=nautilus ;;
+    *nemo*)     PREFERRED=nemo ;;
+    *thunar*)   PREFERRED=thunar ;;
+    *pcmanfm*)  PREFERRED=pcmanfm ;;
+    *)          PREFERRED= ;;
 esac
-env QT_QPA_PLATFORMTHEME=kde dolphin --select ""$target"" >/dev/null 2>&1 & exit 0 || nautilus --select ""$target"" >/dev/null 2>&1 & exit 0 || nemo --no-desktop ""$target"" >/dev/null 2>&1 & exit 0 || thunar ""$parent"" >/dev/null 2>&1 & exit 0 || pcmanfm ""$parent"" >/dev/null 2>&1 & exit 0 || gio open ""$parent"" >/dev/null 2>&1 & exit 0 || xdg-open ""$parent"" >/dev/null 2>&1 &
+launch() {{
+    case ""$1"" in
+        dolphin)  QT_QPA_PLATFORMTHEME=kde dolphin --select ""$target"" >/dev/null 2>&1 & ;;
+        nautilus) nautilus --select ""$target"" >/dev/null 2>&1 & ;;
+        nemo)     nemo --no-desktop ""$target"" >/dev/null 2>&1 & ;;
+        thunar)   thunar ""$parent"" >/dev/null 2>&1 & ;;
+        pcmanfm)  pcmanfm ""$parent"" >/dev/null 2>&1 & ;;
+    esac
+}}
+for c in ""$PREFERRED"" dolphin nautilus nemo thunar pcmanfm; do
+    [ -n ""$c"" ] || continue
+    if command -v ""$c"" >/dev/null 2>&1; then launch ""$c""; exit 0; fi
+done
+command -v gio >/dev/null 2>&1 && {{ gio open ""$parent"" >/dev/null 2>&1 & exit 0; }}
+xdg-open ""$parent"" >/dev/null 2>&1 &
 ";
 
                 var psi = createShellProcessInfo(script);
@@ -165,7 +194,8 @@ env QT_QPA_PLATFORMTHEME=kde dolphin --select ""$target"" >/dev/null 2>&1 & exit
 
                 string script = $@"
 target='{escapedPath}'
-gio open ""$target"" >/dev/null 2>&1 & exit 0 || xdg-open ""$target"" >/dev/null 2>&1 &
+command -v gio >/dev/null 2>&1 && {{ gio open ""$target"" >/dev/null 2>&1 & exit 0; }}
+xdg-open ""$target"" >/dev/null 2>&1 &
 ";
 
                 var psi = createShellProcessInfo(script);

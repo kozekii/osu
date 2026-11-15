@@ -12,6 +12,12 @@ namespace osu.Game.Skinning
     [Serializable]
     public class SkinPreset : IEquatable<SkinPreset>
     {
+        /// <summary>
+        /// Current on-disk schema version. Bump when the serialised shape changes so future
+        /// loaders can migrate old <c>skin-presets.json</c> files.
+        /// </summary>
+        public const int CURRENT_SCHEMA_VERSION = 2;
+
         [JsonProperty("id")]
         public Guid Id { get; set; } = Guid.NewGuid();
 
@@ -57,6 +63,16 @@ namespace osu.Game.Skinning
 
         [JsonProperty("created_at")]
         public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+
+        /// <summary>
+        /// When the preset was last captured from the current skin selection. Separate from
+        /// <see cref="CreatedAt"/> so overwriting a preset doesn't rewrite its identity.
+        /// </summary>
+        [JsonProperty("last_saved_at")]
+        public DateTimeOffset? LastSavedAt { get; set; }
+
+        [JsonProperty("schema_version")]
+        public int SchemaVersion { get; set; } = CURRENT_SCHEMA_VERSION;
 
         public override string ToString() => Name;
 

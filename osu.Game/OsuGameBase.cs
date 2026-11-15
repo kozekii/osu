@@ -307,7 +307,7 @@ namespace osu.Game
             dependencies.Cache(SkinManager = new SkinManager(Storage, realm, Host, Resources, Audio, Scheduler));
             dependencies.CacheAs<ISkinSource>(SkinManager);
             dependencies.Cache(SkinPresetManager = new SkinPresetManager(Storage, SkinManager, LocalConfig));
-            dependencies.Cache(FollowCircleManager = new FollowCircleManager(Storage, SkinManager, LocalConfig));
+            dependencies.Cache(FollowCircleManager = new FollowCircleManager(Storage, SkinManager, LocalConfig, Scheduler));
 
             EndpointConfiguration endpoints = CreateEndpoints();
 
