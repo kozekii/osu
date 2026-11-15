@@ -27,6 +27,7 @@ using osu.Game.Graphics.UserInterfaceV2;
 using osu.Game.Localisation;
 using osu.Game.Online.Multiplayer;
 using osu.Game.Overlays;
+using osu.Game.Screens.Footer;
 using osu.Game.Screens.OnlinePlay.Match.Components;
 using osu.Game.Utils;
 using osuTK;
@@ -216,7 +217,7 @@ namespace osu.Game.Screens.Edit
 
             operationFinishStarted = true;
 
-            BackButtonVisibility.Value = false;
+            FooterContent.Value = ScreenFooterContent.None;
             string originalDifficulty = editor.Beatmap.Value.Beatmap.BeatmapInfo.DifficultyName;
 
             showSpinner(EditorStrings.ExternalEditCleaningUp);

@@ -4,7 +4,6 @@
 using osu.Framework.Allocation;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.UserInterface;
-using osu.Framework.Localisation;
 using osu.Game.Graphics.UserInterfaceV2;
 using osu.Game.Localisation;
 using osu.Game.Overlays.Settings;
@@ -14,8 +13,6 @@ namespace osu.Game.Rulesets.Taiko
 {
     public partial class TaikoSettingsSubsection : RulesetSettingsSubsection
     {
-        protected override LocalisableString Header => "osu!taiko";
-
         public TaikoSettingsSubsection(TaikoRuleset ruleset)
             : base(ruleset)
         {
@@ -35,6 +32,13 @@ namespace osu.Game.Rulesets.Taiko
                 {
                     Caption = RulesetSettingsStrings.TouchControlScheme,
                     Current = config.GetBindable<TaikoTouchControlScheme>(TaikoRulesetSetting.TouchControlScheme)
+                }),
+                new SettingsItemV2(new FormSliderBar<float>
+                {
+                    Caption = RulesetSettingsStrings.TouchDrumSize,
+                    Current = config.GetBindable<float>(TaikoRulesetSetting.TouchDrumSize),
+                    KeyboardStep = 0.01f,
+                    LabelFormat = v => $"{v:0.##}x",
                 }),
                 new SettingsItemV2(hitAnimations = new FormCheckBox
                 {

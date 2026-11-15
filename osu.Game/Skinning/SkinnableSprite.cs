@@ -32,21 +32,24 @@ namespace osu.Game.Skinning
         [SettingSource(typeof(SkinnableComponentStrings), nameof(SkinnableComponentStrings.SpriteName), SettingControlType = typeof(SpriteSelectorControl))]
         public Bindable<string> SpriteName { get; } = new Bindable<string>(string.Empty);
 
-        [SettingSource("Opacity", "Transparency level for the sprite.", SettingControlType = typeof(SettingsPercentageSlider<float>))]
-        public BindableNumber<float> SpriteOpacity { get; } = new BindableFloat(1.0f)
+        [SettingSource(typeof(SkinnableComponentStrings), nameof(SkinnableComponentStrings.Opacity), SettingControlType = typeof(SettingsPercentageSlider<float>))]
+        public BindableNumber<float> Opacity { get; } = new BindableNumber<float>(1)
         {
-            MinValue = 0.05f,
-            MaxValue = 1.0f,
-            Precision = 0.05f,
+            MinValue = 0.01f,
+            MaxValue = 1f,
+            Precision = 0.01f,
         };
+
+        /// <summary>
+        /// Backwards-compatibility alias for custom skin presets saved with <c>sprite_opacity</c>.
+        /// </summary>
+        public BindableNumber<float> SpriteOpacity => Opacity;
 
         [Resolved]
         private ISkinSource source { get; set; } = null!;
 
         [Resolved]
         private SkinManager skins { get; set; } = null!;
-
-        private readonly bool isUserPlaced;
 
         public SkinnableSprite(string textureName, Vector2? maxSize = null, ConfineMode confineMode = ConfineMode.NoScaling)
             : base(new SpriteComponentLookup(textureName, maxSize), confineMode)
@@ -57,7 +60,6 @@ namespace osu.Game.Skinning
         public SkinnableSprite()
             : base(new SpriteComponentLookup(string.Empty), ConfineMode.NoScaling)
         {
-            isUserPlaced = true;
             RelativeSizeAxes = Axes.None;
             AutoSizeAxes = Axes.Both;
 
@@ -67,14 +69,7 @@ namespace osu.Game.Skinning
                 if (IsLoaded)
                     SkinChanged(CurrentSkin);
             });
-        }
-
-        protected override void LoadComplete()
-        {
-            base.LoadComplete();
-
-            if (isUserPlaced)
-                SpriteOpacity.BindValueChanged(o => Alpha = o.NewValue, true);
+            Opacity.BindValueChanged(opacity => Alpha = opacity.NewValue, true);
         }
 
         protected override Drawable CreateDefault(ISkinComponentLookup lookup)

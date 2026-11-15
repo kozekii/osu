@@ -43,6 +43,11 @@ namespace osu.Game.Skinning
         /// </summary>
         public Skin DefaultClassicSkin { get; }
 
+        /// <summary>
+        /// The "retro" skin.
+        /// </summary>
+        public Skin RetroSkin { get; }
+
         private readonly AudioManager audio;
 
         private readonly Scheduler scheduler;
@@ -79,8 +84,6 @@ namespace osu.Game.Skinning
 
         private Skin trianglesSkin { get; }
 
-        private Skin retroSkin { get; }
-
         private static readonly Live<SkinInfo> random_skin_info = new SkinInfo
         {
             ID = SkinInfo.RANDOM_SKIN,
@@ -114,7 +117,7 @@ namespace osu.Game.Skinning
 
             var defaultSkins = new[]
             {
-                retroSkin = new RetroSkin(this),
+                RetroSkin = new RetroSkin(this),
                 DefaultClassicSkin = new DefaultLegacySkin(this),
                 trianglesSkin = new TrianglesSkin(this),
                 argonSkin = new ArgonSkin(this),
@@ -505,7 +508,7 @@ namespace osu.Game.Skinning
                     skinInfo = DefaultClassicSkin.SkinInfo;
 
                 if (guid == SkinInfo.RETRO_SKIN)
-                    skinInfo = retroSkin.SkinInfo;
+                    skinInfo = RetroSkin.SkinInfo;
             }
 
             CurrentSkinInfo.Value = skinInfo ?? trianglesSkin.SkinInfo;
@@ -538,7 +541,7 @@ namespace osu.Game.Skinning
                     if (guid == SkinInfo.CLASSIC_SKIN)
                         skinInfo = DefaultClassicSkin.SkinInfo;
                     else if (guid == SkinInfo.RETRO_SKIN)
-                        skinInfo = retroSkin.SkinInfo;
+                        skinInfo = RetroSkin.SkinInfo;
                     else if (guid == SkinInfo.TRIANGLES_SKIN)
                         skinInfo = trianglesSkin.SkinInfo;
                     else if (guid == SkinInfo.ARGON_SKIN)

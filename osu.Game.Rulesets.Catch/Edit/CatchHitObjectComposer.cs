@@ -8,7 +8,6 @@ using System.Text.RegularExpressions;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
-using osu.Framework.Input.Bindings;
 using osu.Framework.Input.Events;
 using osu.Game.Beatmaps;
 using osu.Game.Configuration;
@@ -27,9 +26,11 @@ using osuTK;
 namespace osu.Game.Rulesets.Catch.Edit
 {
     [Cached]
-    public partial class CatchHitObjectComposer : ScrollingHitObjectComposer<CatchHitObject>, IKeyBindingHandler<GlobalAction>
+    public partial class CatchHitObjectComposer : ScrollingHitObjectComposer<CatchHitObject, CatchAction>
     {
         public const float DISTANCE_SNAP_RADIUS = 50;
+
+        public override Bindable<TernaryState>? SelectionNewComboState { get; } = new Bindable<TernaryState>();
 
         private CatchDistanceSnapGrid distanceSnapGrid = null!;
 
@@ -106,14 +107,14 @@ namespace osu.Game.Rulesets.Catch.Edit
 
         protected override BeatSnapGrid CreateBeatSnapGrid() => new CatchBeatSnapGrid();
 
-        protected override IReadOnlyList<CompositionTool> CompositionTools => new CompositionTool[]
+        protected override IReadOnlyList<CompositionTool<CatchAction>> CompositionTools => new CompositionTool<CatchAction>[]
         {
             new FruitCompositionTool(),
             new JuiceStreamCompositionTool(),
             new BananaShowerCompositionTool()
         };
 
-        public bool OnPressed(KeyBindingPressEvent<GlobalAction> e)
+        public override bool OnPressed(KeyBindingPressEvent<GlobalAction> e)
         {
             switch (e.Action)
             {
@@ -129,11 +130,7 @@ namespace osu.Game.Rulesets.Catch.Edit
                     return true;
             }
 
-            return false;
-        }
-
-        public void OnReleased(KeyBindingReleaseEvent<GlobalAction> e)
-        {
+            return base.OnPressed(e);
         }
 
         protected override bool OnKeyDown(KeyDownEvent e)

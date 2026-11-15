@@ -171,7 +171,7 @@ namespace osu.Game.Overlays.Settings.Sections
                 },
                 new SettingsButtonV2
                 {
-                    Text = SkinSettingsStrings.SkinLayoutEditor,
+                    Text = LocalisableString.Interpolate($@"{SkinSettingsStrings.SkinLayoutEditor}..."),
                     Action = () => skinEditor?.ToggleVisibility(),
                 },
             };
@@ -561,7 +561,7 @@ namespace osu.Game.Overlays.Settings.Sections
             [BackgroundDependencyLoader]
             private void load()
             {
-                Text = CommonStrings.Rename;
+                Text = LocalisableString.Interpolate($@"{CommonStrings.Rename}...");
                 Action = this.ShowPopover;
             }
 
