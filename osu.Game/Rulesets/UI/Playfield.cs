@@ -223,6 +223,12 @@ namespace osu.Game.Rulesets.UI
         public GameplayCursorContainer Cursor { get; private set; }
 
         /// <summary>
+        /// An optional layer to be rendered directly above <see cref="Cursor"/>.
+        /// </summary>
+        [CanBeNull]
+        public virtual Drawable CursorOverlay => null;
+
+        /// <summary>
         /// Provide a cursor which is to be used for gameplay.
         /// </summary>
         /// <returns>The cursor, or null to show the menu cursor.</returns>

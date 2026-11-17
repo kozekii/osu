@@ -391,6 +391,8 @@ namespace osu.Game.Rulesets.UI
 
         public override GameplayCursorContainer Cursor => Playfield.Cursor;
 
+        public override Drawable CursorOverlay => Playfield.CursorOverlay;
+
         public bool ProvidingUserCursor => Playfield.Cursor != null && !HasReplayLoaded.Value;
 
         #endregion
@@ -511,6 +513,12 @@ namespace osu.Game.Rulesets.UI
         /// </summary>
         [CanBeNull]
         public abstract GameplayCursorContainer Cursor { get; }
+
+        /// <summary>
+        /// An optional layer to be rendered directly above <see cref="Cursor"/>.
+        /// </summary>
+        [CanBeNull]
+        public virtual Drawable CursorOverlay => null;
 
         /// <summary>
         /// An optional overlay used when resuming gameplay from a paused state.

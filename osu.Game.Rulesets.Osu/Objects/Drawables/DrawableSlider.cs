@@ -11,6 +11,7 @@ using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
+using osu.Framework.Graphics.Performance;
 using osu.Framework.Layout;
 using osu.Game.Audio;
 using osu.Game.Graphics.Containers;
@@ -164,6 +165,12 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
         {
             base.OnApply();
 
+            if (Entry != null)
+            {
+                Entry.LifetimeChanged += syncProxiedLayerLifetime;
+                syncProxiedLayerLifetime(Entry);
+            }
+
             // Ensure that the version will change after the upcoming BindTo().
             pathVersion.Value = int.MaxValue;
             PathVersion.BindTo(HitObject.Path.Version);
@@ -175,9 +182,21 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
         {
             base.OnFree();
 
+            if (Entry != null)
+                Entry.LifetimeChanged -= syncProxiedLayerLifetime;
+
+            Ball.FollowCircle.ProxiedLayer.LifetimeStart = double.MaxValue;
+            Ball.FollowCircle.ProxiedLayer.LifetimeEnd = double.MinValue;
+
             PathVersion.UnbindFrom(HitObject.Path.Version);
 
             slidingSample?.ClearSamples();
+        }
+
+        private void syncProxiedLayerLifetime(LifetimeEntry lifetimeEntry)
+        {
+            Ball.FollowCircle.ProxiedLayer.LifetimeStart = lifetimeEntry.LifetimeStart;
+            Ball.FollowCircle.ProxiedLayer.LifetimeEnd = lifetimeEntry.LifetimeEnd;
         }
 
         protected override void LoadSamples()

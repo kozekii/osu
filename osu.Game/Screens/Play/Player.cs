@@ -517,6 +517,7 @@ namespace osu.Game.Screens.Play
                     },
                     // display the cursor above some HUD elements.
                     DrawableRuleset.Cursor?.CreateProxy() ?? new Container(),
+                    DrawableRuleset.CursorOverlay?.CreateProxy() ?? new Container(),
                     SkipIntroOverlay = CreateSkipOverlay(DrawableRuleset.GameplayStartTime).With(o =>
                     {
                         o.RequestSkip = RequestIntroSkip;

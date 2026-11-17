@@ -49,6 +49,8 @@ namespace osu.Game.Rulesets.Osu.UI
 
         protected override GameplayCursorContainer? CreateCursor() => new OsuCursorContainer();
 
+        public override Drawable CursorOverlay => followCircleProxies;
+
         public override Quad SkinnableComponentScreenSpaceDrawQuad => playfieldBorder.ScreenSpaceDrawQuad;
 
         private readonly Container judgementAboveHitObjectLayer;
