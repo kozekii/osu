@@ -44,6 +44,7 @@ namespace osu.Game.Overlays.Settings.Sections
         private SettingsItemV2 followCircleSettingItem;
         private FollowCircleDropdown followCircleDropdown;
         private FormCheckBox circularMaskCheckbox;
+        private FormCheckBox followCircleAboveCursorCheckbox;
 
         public override LocalisableString Header => SkinSettingsStrings.SkinSectionHeader;
 
@@ -150,6 +151,10 @@ namespace osu.Game.Overlays.Settings.Sections
                 {
                     Caption = "Circular mask for video follow circles",
                 }),
+                new SettingsItemV2(followCircleAboveCursorCheckbox = new FormCheckBox
+                {
+                    Caption = "Render follow circle on top of cursor",
+                }),
                 new SettingsButtonV2
                 {
                     Text = "Open follow circles folder",
@@ -213,6 +218,7 @@ namespace osu.Game.Overlays.Settings.Sections
             {
                 followCircleModeDropdown.Current = followCircleManager.Mode;
                 circularMaskCheckbox.Current = followCircleManager.CircularMask;
+                followCircleAboveCursorCheckbox.Current = followCircleManager.AboveCursor;
 
                 followCircleManager.AvailableFollowCircles.BindCollectionChanged((_, _) => updateFollowCircles(), true);
 

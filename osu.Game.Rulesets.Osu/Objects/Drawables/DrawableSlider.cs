@@ -138,6 +138,26 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
             }, true);
         }
 
+        public override double LifetimeStart
+        {
+            get => base.LifetimeStart;
+            set
+            {
+                base.LifetimeStart = value;
+                Ball.FollowCircle.ProxiedLayer.LifetimeStart = value;
+            }
+        }
+
+        public override double LifetimeEnd
+        {
+            get => base.LifetimeEnd;
+            set
+            {
+                base.LifetimeEnd = value;
+                Ball.FollowCircle.ProxiedLayer.LifetimeEnd = value;
+            }
+        }
+
         protected override JudgementResult CreateResult(Judgement judgement) => new OsuSliderJudgementResult(HitObject, judgement);
 
         protected override void OnApply()

@@ -9,6 +9,7 @@ using osu.Game.Localisation;
 using osu.Game.Overlays.Settings;
 using osu.Game.Rulesets.Osu.Configuration;
 using osu.Game.Rulesets.UI;
+using osu.Game.Skinning;
 
 namespace osu.Game.Rulesets.Osu.UI
 {
@@ -20,7 +21,7 @@ namespace osu.Game.Rulesets.Osu.UI
         }
 
         [BackgroundDependencyLoader]
-        private void load()
+        private void load(FollowCircleManager? followCircleManager)
         {
             var config = (OsuRulesetConfigManager)Config;
 
@@ -61,6 +62,15 @@ namespace osu.Game.Rulesets.Osu.UI
                     Current = config.GetBindable<PlayfieldBorderStyle>(OsuRulesetSetting.PlayfieldBorderStyle),
                 }),
             };
+
+            if (followCircleManager != null)
+            {
+                Add(new SettingsItemV2(new FormCheckBox
+                {
+                    Caption = "Render follow circle on top of cursor",
+                    Current = followCircleManager.AboveCursor,
+                }));
+            }
         }
     }
 }

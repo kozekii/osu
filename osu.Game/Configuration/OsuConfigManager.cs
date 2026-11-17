@@ -45,6 +45,7 @@ namespace osu.Game.Configuration
             SetDefault(OsuSetting.FollowCircleMode, FollowCircleMode.Default);
             SetDefault(OsuSetting.CustomFollowCircle, string.Empty);
             SetDefault(OsuSetting.FollowCircleCircularMask, true);
+            SetDefault(OsuSetting.FollowCircleAboveCursor, false);
 
             SetDefault(OsuSetting.BeatmapDetailTab, BeatmapDetailTab.Local);
             SetDefault(OsuSetting.BeatmapLeaderboardSortMode, LeaderboardSortMode.Score);
@@ -412,6 +413,7 @@ namespace osu.Game.Configuration
         FollowCircleMode,
         CustomFollowCircle,
         FollowCircleCircularMask,
+        FollowCircleAboveCursor,
         ScreenshotFormat,
         ScreenshotCaptureMenuCursor,
         BeatmapSkins,

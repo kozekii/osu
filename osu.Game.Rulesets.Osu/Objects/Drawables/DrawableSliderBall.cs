@@ -19,8 +19,15 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
     {
         public const float FOLLOW_AREA = 2.4f;
 
+        public DynamicFollowCircle FollowCircle { get; private set; }
+
         private DrawableSlider drawableSlider;
         private Drawable ball;
+
+        public DrawableSliderBall()
+        {
+            FollowCircle = new DynamicFollowCircle();
+        }
 
         [BackgroundDependencyLoader]
         private void load(DrawableHitObject drawableSlider)
@@ -33,7 +40,7 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
 
             Children = new[]
             {
-                new DynamicFollowCircle(),
+                FollowCircle,
                 ball = new SkinnableDrawable(new OsuSkinComponentLookup(OsuSkinComponents.SliderBall), _ => new DefaultSliderBall())
                 {
                     Anchor = Anchor.Centre,

@@ -31,6 +31,10 @@ namespace osu.Game.Rulesets.Osu.Skinning
         [Resolved(CanBeNull = true)]
         private FollowCircleManager? followCircleManager { get; set; }
 
+        public Drawable ProxiedLayer => proxiedContainer;
+
+        private Container inPlaceContainer = null!;
+        private ProxyableContainer proxiedContainer = null!;
         private Container contentContainer = null!;
         private DrawableSlider? drawableSlider;
 
@@ -41,19 +45,34 @@ namespace osu.Game.Rulesets.Osu.Skinning
             Origin = Anchor.Centre;
             Anchor = Anchor.Centre;
             RelativeSizeAxes = Axes.Both;
+
+            InternalChildren = new Drawable[]
+            {
+                inPlaceContainer = new Container
+                {
+                    RelativeSizeAxes = Axes.Both,
+                    Anchor = Anchor.Centre,
+                    Origin = Anchor.Centre,
+                    Child = contentContainer = new Container
+                    {
+                        RelativeSizeAxes = Axes.Both,
+                        Anchor = Anchor.Centre,
+                        Origin = Anchor.Centre,
+                    }
+                },
+                proxiedContainer = new ProxyableContainer
+                {
+                    RelativeSizeAxes = Axes.Both,
+                    Anchor = Anchor.Centre,
+                    Origin = Anchor.Centre,
+                }
+            };
         }
 
         [BackgroundDependencyLoader]
         private void load(DrawableHitObject? hitObject)
         {
             drawableSlider = hitObject as DrawableSlider;
-
-            InternalChild = contentContainer = new Container
-            {
-                RelativeSizeAxes = Axes.Both,
-                Anchor = Anchor.Centre,
-                Origin = Anchor.Centre,
-            };
         }
 
         protected override void LoadComplete()
@@ -71,7 +90,10 @@ namespace osu.Game.Rulesets.Osu.Skinning
                 followCircleManager.Mode.ValueChanged += onModeChanged;
                 followCircleManager.CustomFollowCircleId.ValueChanged += onCustomFollowCircleChanged;
                 followCircleManager.CircularMask.ValueChanged += onCircularMaskChanged;
+                followCircleManager.AboveCursor.ValueChanged += onAboveCursorChanged;
             }
+
+            updateLayerPlacement();
         }
 
         protected override void Update()
@@ -110,6 +132,20 @@ namespace osu.Game.Rulesets.Osu.Skinning
         private void onModeChanged(ValueChangedEvent<FollowCircleMode> _) => onManagerSettingChanged();
         private void onCustomFollowCircleChanged(ValueChangedEvent<string> _) => onManagerSettingChanged();
         private void onCircularMaskChanged(ValueChangedEvent<bool> _) => onManagerSettingChanged();
+        private void onAboveCursorChanged(ValueChangedEvent<bool> _) => updateLayerPlacement();
+
+        private void updateLayerPlacement()
+        {
+            bool aboveCursor = followCircleManager?.AboveCursor.Value ?? false;
+            Container targetParent = aboveCursor ? proxiedContainer : inPlaceContainer;
+            Container otherParent = aboveCursor ? inPlaceContainer : proxiedContainer;
+
+            if (contentContainer.Parent == targetParent)
+                return;
+
+            otherParent.Remove(contentContainer, false);
+            targetParent.Add(contentContainer);
+        }
 
         private void onManagerSettingChanged()
         {
@@ -208,7 +244,13 @@ namespace osu.Game.Rulesets.Osu.Skinning
                 followCircleManager.Mode.ValueChanged -= onModeChanged;
                 followCircleManager.CustomFollowCircleId.ValueChanged -= onCustomFollowCircleChanged;
                 followCircleManager.CircularMask.ValueChanged -= onCircularMaskChanged;
+                followCircleManager.AboveCursor.ValueChanged -= onAboveCursorChanged;
             }
+        }
+
+        private partial class ProxyableContainer : Container
+        {
+            public override bool RemoveWhenNotAlive => false;
         }
     }
 }

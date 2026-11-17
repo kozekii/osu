@@ -45,6 +45,8 @@ namespace osu.Game.Skinning
 
         public Bindable<bool> CircularMask { get; } = new Bindable<bool>();
 
+        public Bindable<bool> AboveCursor { get; } = new Bindable<bool>();
+
         private readonly Storage storage;
         private readonly SkinManager skins;
         private readonly OsuConfigManager config;
@@ -78,6 +80,7 @@ namespace osu.Game.Skinning
             config.BindWith(OsuSetting.FollowCircleMode, Mode);
             config.BindWith(OsuSetting.CustomFollowCircle, CustomFollowCircleId);
             config.BindWith(OsuSetting.FollowCircleCircularMask, CircularMask);
+            config.BindWith(OsuSetting.FollowCircleAboveCursor, AboveCursor);
 
             skins.CurrentSkin.BindValueChanged(_ => RefreshAvailableFollowCircles(), true);
         }

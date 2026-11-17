@@ -32,6 +32,7 @@ namespace osu.Game.Rulesets.Osu.UI
         private readonly Container borderContainer;
         private readonly PlayfieldBorder playfieldBorder;
         private readonly ProxyContainer approachCircles;
+        private readonly ProxyContainer followCircleProxies;
         private readonly ProxyContainer spinnerProxies;
         private readonly JudgementContainer<DrawableOsuJudgement> judgementLayer;
 
@@ -71,6 +72,11 @@ namespace osu.Game.Rulesets.Osu.UI
                 HitObjectContainer,
                 judgementAboveHitObjectLayer = new Container { RelativeSizeAxes = Axes.Both },
                 approachCircles = new ProxyContainer { RelativeSizeAxes = Axes.Both },
+                followCircleProxies = new ProxyContainer
+                {
+                    RelativeSizeAxes = Axes.Both,
+                    Depth = -1,
+                },
             };
 
             HitPolicy = new StartTimeOrderedHitPolicy();
@@ -122,6 +128,10 @@ namespace osu.Game.Rulesets.Osu.UI
 
                 case DrawableHitCircle hitCircle:
                     approachCircles.Add(hitCircle.ProxiedLayer.CreateProxy());
+                    break;
+
+                case DrawableSlider slider:
+                    followCircleProxies.Add(slider.Ball.FollowCircle.ProxiedLayer.CreateProxy());
                     break;
             }
         }
